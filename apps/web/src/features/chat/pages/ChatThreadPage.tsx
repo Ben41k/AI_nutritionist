@@ -1,0 +1,88 @@
+import { useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useParams } from 'react-router-dom';
+import { apiJson } from '@/shared/services/apiClient';
+import { Card } from '@/shared/components/Card';
+import { Button } from '@/shared/components/Button';
+import { Textarea } from '@/shared/components/Textarea';
+import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
+
+type Msg = {
+  id: string;
+  role: 'USER' | 'ASSISTANT' | 'SYSTEM';
+  content: string;
+  createdAt: string;
+};
+
+export function ChatThreadPage() {
+  const { threadId } = useParams<{ threadId: string }>();
+  const qc = useQueryClient();
+  const [text, setText] = useState('');
+  const [lastMeta, setLastMeta] = useState<string | null>(null);
+
+  const { data } = useQuery({
+    queryKey: ['chat-messages', threadId],
+    enabled: Boolean(threadId),
+    queryFn: () => apiJson<{ messages: Msg[] }>(`/chat/threads/${threadId}/messages`),
+  });
+
+  const send = useMutation({
+    mutationFn: async () => {
+      const res = await apiJson<{ message: { content: string }; retrievalUsed: boolean }>(
+        `/chat/threads/${threadId}/messages`,
+        { method: 'POST', body: JSON.stringify({ content: text }) },
+      );
+      setLastMeta(
+        res.retrievalUsed
+          ? 'Использованы выдержки из базы знаний'
+          : 'Без retrieval (пустая база или ошибка эмбеддинга)',
+      );
+      return res;
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-messages', threadId] });
+      setText('');
+    },
+  });
+
+  if (!threadId) return null;
+
+  return (
+    <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <DisclaimerBanner />
+      {lastMeta ? <p className="text-xs text-ink-muted">{lastMeta}</p> : null}
+      <Card className="flex max-h-[60vh] flex-col">
+        <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+          {(data?.messages ?? []).map((m) => (
+            <div
+              key={m.id}
+              className={
+                m.role === 'USER'
+                  ? 'ml-8 rounded-lg bg-primary-soft px-3 py-2 text-sm text-ink-heading'
+                  : 'mr-8 rounded-lg border border-border bg-page px-3 py-2 text-sm text-ink-body'
+              }
+            >
+              {m.content}
+            </div>
+          ))}
+        </div>
+      </Card>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+        <Textarea
+          className="flex-1 rounded-md"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Ваш вопрос…"
+        />
+        <Button
+          className="sm:mb-0.5"
+          onClick={() => send.mutate()}
+          disabled={send.isPending || !text.trim()}
+        >
+          {send.isPending ? 'Отправка…' : 'Отправить'}
+        </Button>
+      </div>
+      {send.isError ? <p className="text-sm text-red-600">Ошибка отправки</p> : null}
+    </div>
+  );
+}

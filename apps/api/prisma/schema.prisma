@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Sex {
+  MALE
+  FEMALE
+  OTHER
+  UNSPECIFIED
+}
+
+enum NutritionGoal {
+  WEIGHT_LOSS
+  WEIGHT_GAIN
+  MAINTENANCE
+  HEALTH
+}
+
+enum ActivityLevel {
+  SEDENTARY
+  LIGHT
+  MODERATE
+  HIGH
+  ATHLETE
+}
+
+enum PortionEstimate {
+  SMALL
+  MEDIUM
+  LARGE
+  UNKNOWN
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         Role      @default(USER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  profile      Profile?
+  mealEntries  MealEntry[]
+  chatThreads  ChatThread[]
+}
+
+model Profile {
+  id             String          @id @default(cuid())
+  userId         String          @unique
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  age            Int?
+  sex            Sex             @default(UNSPECIFIED)
+  weightKg       Float?
+  heightCm       Float?
+  goal           NutritionGoal   @default(MAINTENANCE)
+  activityLevel  ActivityLevel   @default(SEDENTARY)
+  allergies      String?
+  preferences    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model MealEntry {
+  id                     String           @id @default(cuid())
+  userId                 String
+  user                   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  occurredAt             DateTime
+  description            String
+  portionEstimate        PortionEstimate  @default(UNKNOWN)
+  structuredEstimate     Json?
+  isModelEstimate        Boolean          @default(false)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  @@index([userId, occurredAt])
+}
+
+model ChatThread {
+  id        String        @id @default(cuid())
+  userId    String
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  messages  ChatMessage[]
+
+  @@index([userId])
+}
+
+model ChatMessage {
+  id        String    @id @default(cuid())
+  threadId  String
+  thread    ChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role      ChatRole
+  content   String
+  createdAt DateTime  @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+model KnowledgeDocument {
+  id        String            @id @default(cuid())
+  title     String
+  content   String            @db.Text
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  chunks    KnowledgeChunk[]
+}
+
+model KnowledgeChunk {
+  id         String              @id @default(cuid())
+  documentId String
+  document   KnowledgeDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  chunkIndex Int
+  content    String              @db.Text
+  embedding  Unsupported("vector(1536)")?
+
+  @@index([documentId])
+}
