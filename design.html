@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Nutritionist — Design Reference</title>
+  <!--
+    НАЗНАЧЕНИЕ ФАЙЛА
+    Визуальный и технический референс UI для проекта. При внедрении в React/TS
+    переносить значения из :root (переменные) и повторять отступы, радиусы,
+    типографику и иерархию блоков как здесь.
+
+    Шрифт: Inter (или системный stack как fallback).
+    Стиль: светлый фон, мягкие тени, скругления 20–24px, акцент индиго/фиолетовый.
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ========== DESIGN TOKENS (копировать в тему приложения) ========== */
+    :root {
+      --color-bg-page: #f8f9fb;
+      --color-surface: #ffffff;
+      --color-primary: #5a67d8;
+      --color-primary-hover: #4c58c9;
+      --color-primary-soft: #e8eaff;
+      --color-accent-lavender: #e0e0ff;
+      --color-text-heading: #1a202c;
+      --color-text-body: #4a5568;
+      --color-text-muted: #718096;
+      --color-border: #e2e8f0;
+      --color-chart-blue: #90cdf4;
+      --color-chart-orange: #fbd38d;
+
+      --radius-lg: 22px;
+      --radius-md: 14px;
+      --radius-pill: 999px;
+      --shadow-card: 0 4px 24px rgba(15, 23, 42, 0.06);
+      --shadow-soft: 0 2px 8px rgba(15, 23, 42, 0.04);
+
+      --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      --space-xs: 6px;
+      --space-sm: 12px;
+      --space-md: 20px;
+      --space-lg: 28px;
+      --space-xl: 36px;
+
+      --sidebar-width: 76px;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
+    html {
+      font-size: 15px;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font-sans);
+      background: var(--color-bg-page);
+      color: var(--color-text-body);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .app-shell {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* ----- Sidebar ----- */
+    .sidebar {
+      width: var(--sidebar-width);
+      flex-shrink: 0;
+      background: var(--color-surface);
+      border-right: 1px solid var(--color-border);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: var(--space-md) 0;
+      gap: var(--space-lg);
+    }
+
+    .sidebar-logo {
+      width: 36px;
+      height: 36px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+    }
+
+    .sidebar-logo span {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--color-primary);
+      opacity: 0.85;
+    }
+
+    .sidebar-nav {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: var(--space-sm);
+      flex: 1;
+    }
+
+    .nav-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: transparent;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .nav-icon:hover {
+      background: var(--color-primary-soft);
+      color: var(--color-primary);
+    }
+
+    .nav-icon.active {
+      background: var(--color-primary);
+      color: #fff;
+    }
+
+    .nav-icon svg {
+      width: 20px;
+      height: 20px;
+    }
+
+    .sidebar-footer {
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-sm);
+    }
+
+    /* ----- Main ----- */
+    .main {
+      flex: 1;
+      padding: var(--space-lg) var(--space-xl);
+      overflow-x: auto;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-md);
+      margin-bottom: var(--space-lg);
+    }
+
+    .user-block {
+      display: flex;
+      align-items: center;
+      gap: var(--space-sm);
+    }
+
+    .avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--color-surface);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .user-block h1 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .user-block p {
+      margin: 2px 0 0;
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+    }
+
+    .top-links {
+      display: flex;
+      gap: var(--space-lg);
+      align-items: center;
+    }
+
+    .top-links a {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--color-text-muted);
+      text-decoration: none;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .top-links a:hover {
+      color: var(--color-primary);
+    }
+
+    .page-intro {
+      margin-bottom: var(--space-md);
+    }
+
+    .page-intro .label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--color-text-muted);
+      margin: 0 0 6px;
+    }
+
+    .page-intro .title {
+      margin: 0;
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-xl);
+    }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 22px;
+      border-radius: var(--radius-pill);
+      border: none;
+      background: var(--color-primary);
+      color: #fff;
+      font-family: inherit;
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(90, 103, 216, 0.35);
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn-primary:hover {
+      background: var(--color-primary-hover);
+    }
+
+    .btn-pill {
+      padding: 10px 18px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      color: var(--color-text-body);
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .btn-pill:hover {
+      border-color: var(--color-primary);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .search-wrap {
+      margin-left: auto;
+      position: relative;
+      min-width: 200px;
+      max-width: 280px;
+      flex: 1;
+    }
+
+    .search-wrap input {
+      width: 100%;
+      padding: 12px 44px 12px 16px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      font-family: inherit;
+      font-size: 0.875rem;
+    }
+
+    .search-wrap input::placeholder {
+      color: var(--color-text-muted);
+    }
+
+    .search-wrap .search-icon {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--color-text-muted);
+      pointer-events: none;
+    }
+
+    /* ----- Cards grid top ----- */
+    .cards-top {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: var(--space-md);
+      margin-bottom: var(--space-md);
+    }
+
+    @media (max-width: 1100px) {
+      .cards-top {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
+      padding: var(--space-lg);
+      box-shadow: var(--shadow-card);
+    }
+
+    .card-promo {
+      background: var(--color-accent-lavender);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: var(--space-sm);
+    }
+
+    .card-promo h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+      line-height: 1.35;
+    }
+
+    .card-promo p {
+      margin: 0;
+      font-size: 0.9rem;
+      color: var(--color-text-body);
+      line-height: 1.5;
+    }
+
+    .card-promo .btn-primary {
+      align-self: flex-start;
+      margin-top: var(--space-sm);
+    }
+
+    .card-integrated {
+      position: relative;
+      text-align: center;
+    }
+
+    .card-integrated .mock-ui {
+      background: linear-gradient(180deg, #f7fafc 0%, #edf2f7 100%);
+      border-radius: var(--radius-md);
+      padding: var(--space-sm);
+      margin-bottom: var(--space-md);
+      border: 1px solid var(--color-border);
+      min-height: 120px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+
+    .mock-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.7rem;
+    }
+
+    .mock-table th,
+    .mock-table td {
+      padding: 6px 8px;
+      text-align: left;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .carousel-nav {
+      position: absolute;
+      top: 42%;
+      width: 100%;
+      left: 0;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 8px;
+      pointer-events: none;
+    }
+
+    .carousel-nav button {
+      pointer-events: auto;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      border: 1px solid var(--color-border);
+      background: var(--color-surface);
+      cursor: pointer;
+      display: grid;
+      place-items: center;
+      color: var(--color-text-muted);
+      box-shadow: var(--shadow-soft);
+    }
+
+    .carousel-nav button:hover {
+      color: var(--color-primary);
+    }
+
+    .card-integrated h3,
+    .card-progress h3 {
+      margin: 0 0 8px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .card-integrated p,
+    .card-progress > p {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--color-text-muted);
+      line-height: 1.45;
+    }
+
+    .card-progress .bars {
+      margin-top: var(--space-lg);
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .bar-row {
+      display: flex;
+      align-items: flex-end;
+      gap: var(--space-md);
+    }
+
+    .bar-track {
+      flex: 1;
+      height: 120px;
+      background: #f1f5f9;
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      padding: 8px;
+      position: relative;
+    }
+
+    .bar-fill {
+      align-self: stretch;
+      min-height: 8px;
+      border-radius: 10px 10px 6px 6px;
+      transition: height 0.3s;
+    }
+
+    .bar-fill.blue {
+      background: var(--color-chart-blue);
+    }
+
+    .bar-fill.orange {
+      background: var(--color-chart-orange);
+    }
+
+    .bar-meta {
+      min-width: 100px;
+    }
+
+    .bar-meta strong {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--color-text-heading);
+    }
+
+    .bar-meta span {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+    }
+
+    /* ----- Bottom row ----- */
+    .cards-bottom {
+      display: grid;
+      grid-template-columns: 1fr minmax(260px, 300px);
+      gap: var(--space-md);
+      align-items: start;
+    }
+
+    @media (max-width: 900px) {
+      .cards-bottom {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card-recent .card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: var(--space-sm);
+      margin-bottom: var(--space-md);
+    }
+
+    .card-recent h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .tabs {
+      display: flex;
+      gap: var(--space-md);
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .tabs button {
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--color-text-muted);
+      cursor: pointer;
+      padding: 6px 0;
+      position: relative;
+    }
+
+    .tabs button:hover {
+      color: var(--color-text-body);
+    }
+
+    .tabs button.active {
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .tabs button.active::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 3px;
+      border-radius: 2px;
+      background: var(--color-primary);
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+    }
+
+    .data-table th {
+      text-align: left;
+      padding: 12px 10px;
+      color: var(--color-text-muted);
+      font-weight: 600;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .data-table td {
+      padding: 14px 10px;
+      vertical-align: middle;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .data-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .cell-resource {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .thumb {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      object-fit: cover;
+      background: var(--color-primary-soft);
+    }
+
+    .cell-resource strong {
+      display: block;
+      color: var(--color-text-heading);
+      font-weight: 600;
+    }
+
+    .cell-resource small {
+      color: var(--color-text-muted);
+      font-size: 0.75rem;
+    }
+
+    .card-team .card-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: var(--space-md);
+    }
+
+    .card-team h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--color-text-heading);
+    }
+
+    .card-team a {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--color-primary);
+      text-decoration: none;
+    }
+
+    .card-team a:hover {
+      text-decoration: underline;
+    }
+
+    .team-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: var(--space-md);
+    }
+
+    .team-list li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .team-list .avatar-sm {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    .team-meta {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .team-meta strong {
+      display: block;
+      font-size: 0.9rem;
+      color: var(--color-text-heading);
+    }
+
+    .team-meta span {
+      font-size: 0.75rem;
+      color: var(--color-text-muted);
+    }
+
+    .team-time {
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+      white-space: nowrap;
+    }
+
+    /* ----- Dev reference (свернуто) ----- */
+    .design-meta {
+      margin-top: var(--space-xl);
+      padding: var(--space-md);
+      background: var(--color-surface);
+      border-radius: var(--radius-md);
+      border: 1px dashed var(--color-border);
+      font-size: 0.8rem;
+      color: var(--color-text-muted);
+    }
+
+    .design-meta summary {
+      cursor: pointer;
+      font-weight: 600;
+      color: var(--color-text-heading);
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Основная навигация">
+      <div class="sidebar-logo" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
+      <nav class="sidebar-nav">
+        <button type="button" class="nav-icon active" title="Дашборд" aria-current="page">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </button>
+        <button type="button" class="nav-icon" title="Люди">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </button>
+        <button type="button" class="nav-icon" title="Таймер">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </button>
+        <button type="button" class="nav-icon" title="Аналитика">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        </button>
+        <button type="button" class="nav-icon" title="Сообщения">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        </button>
+      </nav>
+      <div class="sidebar-footer">
+        <button type="button" class="nav-icon" title="Настройки">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+        </button>
+        <button type="button" class="nav-icon" title="Уведомления">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="top-bar">
+        <div class="user-block">
+          <img class="avatar" src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=96&h=96&fit=crop" alt="" width="48" height="48" />
+          <div>
+            <h1>Sarah wijas</h1>
+            <p>sarah@example.com</p>
+          </div>
+        </div>
+        <div class="top-links">
+          <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg> Customize Dashboard</a>
+          <a href="#"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg> Today</a>
+        </div>
+      </header>
+
+      <section class="page-intro">
+        <p class="label">Project Overview</p>
+        <h2 class="title">Moneta Project</h2>
+      </section>
+
+      <div class="action-row">
+        <button type="button" class="btn-primary">✦ Ask AI</button>
+        <button type="button" class="btn-pill">Get tasks updates</button>
+        <button type="button" class="btn-pill">Create workspace</button>
+        <button type="button" class="btn-pill">Connect apps</button>
+        <div class="search-wrap">
+          <input type="search" placeholder="Try Search..." aria-label="Поиск" />
+          <span class="search-icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+          </span>
+        </div>
+      </div>
+
+      <section class="cards-top" aria-label="Виджеты обзора">
+        <article class="card card-promo">
+          <h2>Let us make our work journey a satisfying achievement</h2>
+          <p>Plan tasks, track progress, and keep your team aligned in one calm workspace.</p>
+          <button type="button" class="btn-primary">Go for it!</button>
+        </article>
+
+        <article class="card card-integrated">
+          <div class="carousel-nav">
+            <button type="button" aria-label="Назад">‹</button>
+            <button type="button" aria-label="Вперёд">›</button>
+          </div>
+          <div class="mock-ui">
+            <table class="mock-table">
+              <thead><tr><th>Name</th><th>Status</th><th>Due</th></tr></thead>
+              <tbody>
+                <tr><td>Design</td><td>Active</td><td>Mon</td></tr>
+                <tr><td>Build</td><td>Queued</td><td>Wed</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Integrated work</h3>
+          <p>Bring tools and updates together so nothing slips through the cracks.</p>
+        </article>
+
+        <article class="card card-progress">
+          <h3>Project progress stages</h3>
+          <p>Quick snapshot of where effort is going this week.</p>
+          <div class="bars">
+            <div class="bar-row">
+              <div class="bar-meta"><strong>Moneta Project</strong><span>80%</span></div>
+              <div class="bar-track"><div class="bar-fill blue" style="height:80%" title="80%"></div></div>
+            </div>
+            <div class="bar-row">
+              <div class="bar-meta"><strong>Task</strong><span>20%</span></div>
+              <div class="bar-track"><div class="bar-fill orange" style="height:20%" title="20%"></div></div>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="cards-bottom" aria-label="Недавняя работа и команда">
+        <article class="card card-recent">
+          <div class="card-head">
+            <h2>Recent Work</h2>
+            <ul class="tabs" role="tablist">
+              <li><button type="button">All</button></li>
+              <li><button type="button" class="active">Project</button></li>
+              <li><button type="button">Videos</button></li>
+              <li><button type="button">Docs</button></li>
+            </ul>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Resource</th>
+                <th>Week</th>
+                <th>Progress</th>
+                <th>Task</th>
+                <th>Feedback</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>
+                  <div class="cell-resource">
+                    <img class="thumb" src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=88&h=88&fit=crop" alt="" />
+                    <div>
+                      <strong>Job website wireframe creation</strong>
+                      <small>Slack.com · 2 days ago</small>
+                    </div>
+                  </div>
+                </td>
+                <td>12</td>
+                <td>68%</td>
+                <td>8</td>
+                <td>4</td>
+              </tr>
+              <tr>
+                <td>
+                  <div class="cell-resource">
+                    <img class="thumb" src="https://images.unsplash.com/photo-1551434678-e076c223a692?w=88&h=88&fit=crop" alt="" />
+                    <div>
+                      <strong>Dashboard analytics module</strong>
+                      <small>Notion · 1 day ago</small>
+                    </div>
+                  </div>
+                </td>
+                <td>9</td>
+                <td>42%</td>
+                <td>5</td>
+                <td>2</td>
+              </tr>
+            </tbody>
+          </table>
+        </article>
+
+        <article class="card card-team">
+          <div class="card-head">
+            <h2>My team</h2>
+            <a href="#">See all</a>
+          </div>
+          <ul class="team-list">
+            <li>
+              <img class="avatar-sm" src="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=80&h=80&fit=crop" alt="" />
+              <div class="team-meta">
+                <strong>Dr. Ana Morales</strong>
+                <span>Endocrinologist</span>
+              </div>
+              <span class="team-time">32 min/Work</span>
+            </li>
+            <li>
+              <img class="avatar-sm" src="https://images.unsplash.com/photo-1560250097-0b93528c311a?w=80&h=80&fit=crop" alt="" />
+              <div class="team-meta">
+                <strong>James Chen</strong>
+                <span>Nutritionist</span>
+              </div>
+              <span class="team-time">18 min/Work</span>
+            </li>
+            <li>
+              <img class="avatar-sm" src="https://images.unsplash.com/photo-1580489944761-15a19d654956?w=80&h=80&fit=crop" alt="" />
+              <div class="team-meta">
+                <strong>Elena Volkov</strong>
+                <span>Coach</span>
+              </div>
+              <span class="team-time">45 min/Work</span>
+            </li>
+          </ul>
+        </article>
+      </section>
+
+      <details class="design-meta">
+        <summary>Токены и правила для переноса в код</summary>
+        <p style="margin-top:12px">
+          Цвета и радиусы заданы в <code>:root</code> в начале <code>&lt;style&gt;</code>.
+          Сайдбар ~76px; карточки <code>border-radius: 22px</code>; основная кнопка — сплошной индиго с мягкой тенью;
+          вторичные — белый фон, бордер <code>#e2e8f0</code>, pill. Активная вкладка — жирный текст + полоска снизу цвета primary.
+          Фон страницы <code>#f8f9fb</code>, промо-карточка <code>#e0e0ff</code>.
+        </p>
+      </details>
+    </main>
+  </div>
+</body>
+</html>
