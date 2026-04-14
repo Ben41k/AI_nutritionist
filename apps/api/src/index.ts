@@ -4,6 +4,7 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
+import { HttpError } from './lib/errors.js';
 import { prisma } from './prisma.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerProfileRoutes } from './routes/profile.js';
@@ -41,6 +42,14 @@ async function main(): Promise<void> {
   app.setErrorHandler((err, req, reply) => {
     req.log.error({ err }, 'request error');
     if (reply.sent) return;
+    if (err instanceof HttpError) {
+      const body: {
+        error: { code: string; message: string; details?: unknown };
+      } = { error: { code: err.code, message: err.message } };
+      if (err.details !== undefined) body.error.details = err.details;
+      void reply.status(err.statusCode).send(body);
+      return;
+    }
     const e = err as Error & { statusCode?: number };
     const status = e.statusCode ?? 500;
     const code = status === 401 ? 'UNAUTHORIZED' : 'INTERNAL_ERROR';

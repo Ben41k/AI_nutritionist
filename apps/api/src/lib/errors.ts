@@ -20,6 +20,9 @@ export function sendError(
 }
 
 export class HttpError extends Error {
+  /** Same as `status`; Fastify reads `statusCode` on thrown errors. */
+  public readonly statusCode: number;
+
   constructor(
     public readonly status: number,
     public readonly code: string,
@@ -28,5 +31,6 @@ export class HttpError extends Error {
   ) {
     super(message);
     this.name = 'HttpError';
+    this.statusCode = status;
   }
 }

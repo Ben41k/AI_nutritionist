@@ -82,7 +82,11 @@ export function ChatThreadPage() {
           {send.isPending ? 'Отправка…' : 'Отправить'}
         </Button>
       </div>
-      {send.isError ? <p className="text-sm text-red-600">Ошибка отправки</p> : null}
+      {send.isError ? (
+        <p className="text-sm text-red-600">
+          {send.error instanceof Error ? send.error.message : 'Ошибка отправки'}
+        </p>
+      ) : null}
     </div>
   );
 }
