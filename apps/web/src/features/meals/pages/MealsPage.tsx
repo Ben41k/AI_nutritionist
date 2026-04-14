@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
@@ -14,6 +14,107 @@ type Meal = {
   structuredEstimate: unknown;
   isModelEstimate: boolean;
 };
+
+type MealsListData = { meals: Meal[] };
+
+type StructuredEstimate = {
+  caloriesKcal?: number;
+  proteinG?: number;
+  fatG?: number;
+  carbsG?: number;
+  notes?: string;
+};
+
+function parseStructuredEstimate(raw: unknown): StructuredEstimate | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const o = raw as Record<string, unknown>;
+  const num = (v: unknown): number | undefined => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string') {
+      const n = Number(v.replace(',', '.'));
+      return Number.isFinite(n) ? n : undefined;
+    }
+    return undefined;
+  };
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v : undefined);
+  return {
+    caloriesKcal: num(o.caloriesKcal),
+    proteinG: num(o.proteinG),
+    fatG: num(o.fatG),
+    carbsG: num(o.carbsG),
+    notes: str(o.notes),
+  };
+}
+
+function hasReadableMacros(raw: unknown): boolean {
+  const est = parseStructuredEstimate(raw);
+  if (!est) return false;
+  return (
+    est.caloriesKcal !== undefined ||
+    est.proteinG !== undefined ||
+    est.fatG !== undefined ||
+    est.carbsG !== undefined ||
+    Boolean(est.notes?.length)
+  );
+}
+
+function localDayRangeQuery(dateStr: string): string {
+  const from = new Date(`${dateStr}T00:00:00`);
+  const to = new Date(`${dateStr}T23:59:59.999`);
+  const p = new URLSearchParams({
+    from: from.toISOString(),
+    to: to.toISOString(),
+  });
+  return `/meals?${p.toString()}`;
+}
+
+function MealMacrosPanel({ raw }: { raw: unknown }) {
+  const est = parseStructuredEstimate(raw);
+  const rows: { label: string; value: string }[] = [];
+  if (est?.caloriesKcal !== undefined) {
+    rows.push({ label: 'Ккал', value: `${Math.round(est.caloriesKcal)} ккал` });
+  }
+  if (est?.proteinG !== undefined) {
+    rows.push({ label: 'Белки', value: `${est.proteinG.toFixed(1)} г` });
+  }
+  if (est?.fatG !== undefined) {
+    rows.push({ label: 'Жиры', value: `${est.fatG.toFixed(1)} г` });
+  }
+  if (est?.carbsG !== undefined) {
+    rows.push({ label: 'Углеводы', value: `${est.carbsG.toFixed(1)} г` });
+  }
+
+  if (rows.length === 0 && !est?.notes) {
+    return (
+      <p className="mt-2 text-sm text-ink-muted">
+        Оценка БЖУ недоступна: модель не вернула распознаваемые значения.
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-md border border-border/60 bg-page/80 px-3 py-2">
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        Оценка модели (приблизительно)
+      </div>
+      {rows.length > 0 ? (
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+          {rows.map((r) => (
+            <Fragment key={r.label}>
+              <dt className="text-ink-muted">{r.label}</dt>
+              <dd className="font-medium text-ink-heading">{r.value}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      ) : null}
+      {est?.notes ? (
+        <p className="mt-2 border-t border-border/40 pt-2 text-xs leading-relaxed text-ink-body">
+          {est.notes}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 function todayISO() {
   const d = new Date();
@@ -35,9 +136,9 @@ export function MealsPage() {
 
   const queryKey = useMemo(() => ['meals', date] as const, [date]);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading } = useQuery<MealsListData>({
     queryKey,
-    queryFn: () => apiJson<{ meals: Meal[] }>(`/meals?date=${encodeURIComponent(date)}`),
+    queryFn: () => apiJson<MealsListData>(localDayRangeQuery(date)),
   });
 
   const create = useMutation({
@@ -52,7 +153,16 @@ export function MealsPage() {
         }),
       });
     },
-    onSuccess: () => {
+    onSuccess: (payload) => {
+      const meal = payload.meal;
+      qc.setQueryData<MealsListData>(queryKey, (prev) => {
+        const existing = prev?.meals ?? [];
+        const without = existing.filter((m) => m.id !== meal.id);
+        const meals = [...without, meal].sort(
+          (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+        );
+        return { meals };
+      });
       void qc.invalidateQueries({ queryKey });
       setDescription('');
       setAnalyze(false);
@@ -117,10 +227,12 @@ export function MealsPage() {
                 {new Date(m.occurredAt).toLocaleString()}
               </div>
               <div className="font-medium text-ink-heading">{m.description}</div>
-              {m.isModelEstimate && m.structuredEstimate ? (
-                <pre className="mt-2 overflow-x-auto rounded bg-page p-2 text-xs text-ink-body">
-                  {JSON.stringify(m.structuredEstimate, null, 2)}
-                </pre>
+              {hasReadableMacros(m.structuredEstimate) ? (
+                <MealMacrosPanel raw={m.structuredEstimate} />
+              ) : m.isModelEstimate ? (
+                <p className="mt-2 text-sm text-ink-muted">
+                  Оценка БЖУ недоступна: модель не вернула данные для этой записи.
+                </p>
               ) : null}
             </li>
           ))}
