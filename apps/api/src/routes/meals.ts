@@ -142,4 +142,21 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
     });
     await reply.status(201).send({ meal });
   });
+
+  app.delete('/meals/:mealId', async (req, reply) => {
+    const u = getBearerUser(req);
+    if (!u) {
+      sendError(reply, 401, 'UNAUTHORIZED', 'Authentication required');
+      return;
+    }
+    const { mealId } = req.params as { mealId: string };
+    const removed = await prisma.mealEntry.deleteMany({
+      where: { id: mealId, userId: u.sub },
+    });
+    if (removed.count === 0) {
+      sendError(reply, 404, 'NOT_FOUND', 'Meal not found');
+      return;
+    }
+    await reply.send({ ok: true });
+  });
 }

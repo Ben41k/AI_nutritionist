@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { apiJson } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
+import { TrashIcon } from '@/shared/components/TrashIcon';
 import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
 
 type Thread = { id: string; title: string | null; updatedAt: string };
@@ -58,8 +59,9 @@ export function ChatListPage() {
               <div className="flex shrink-0 items-center border-l border-border px-2">
                 <Button
                   variant="ghost"
-                  className="text-xs text-red-600 hover:text-red-700"
+                  className="px-2.5 py-2 text-primary hover:bg-primary-soft hover:text-primary-hover"
                   disabled={remove.isPending}
+                  aria-label="Удалить чат"
                   onClick={() => {
                     if (
                       !window.confirm(
@@ -71,7 +73,7 @@ export function ChatListPage() {
                     remove.mutate(t.id);
                   }}
                 >
-                  Удалить
+                  <TrashIcon className="size-5 shrink-0 opacity-90" />
                 </Button>
               </div>
             </li>

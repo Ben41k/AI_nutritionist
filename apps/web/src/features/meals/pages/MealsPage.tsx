@@ -5,6 +5,7 @@ import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
 import { Textarea } from '@/shared/components/Textarea';
+import { TrashIcon } from '@/shared/components/TrashIcon';
 
 type Meal = {
   id: string;
@@ -169,6 +170,14 @@ export function MealsPage() {
     },
   });
 
+  const remove = useMutation({
+    mutationFn: (mealId: string) =>
+      apiJson<{ ok: boolean }>(`/meals/${mealId}`, { method: 'DELETE' }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey });
+    },
+  });
+
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
@@ -222,21 +231,47 @@ export function MealsPage() {
         {isLoading ? <p className="text-ink-muted">Загрузка…</p> : null}
         <ul className="space-y-3">
           {(data?.meals ?? []).map((m) => (
-            <li key={m.id} className="rounded-md border border-border px-4 py-3">
-              <div className="text-xs text-ink-muted">
-                {new Date(m.occurredAt).toLocaleString()}
+            <li
+              key={m.id}
+              className="flex gap-3 rounded-md border border-border px-3 py-3 sm:px-4"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-ink-muted">
+                  {new Date(m.occurredAt).toLocaleString()}
+                </div>
+                <div className="font-medium text-ink-heading">{m.description}</div>
+                {hasReadableMacros(m.structuredEstimate) ? (
+                  <MealMacrosPanel raw={m.structuredEstimate} />
+                ) : m.isModelEstimate ? (
+                  <p className="mt-2 text-sm text-ink-muted">
+                    Оценка БЖУ недоступна: модель не вернула данные для этой записи.
+                  </p>
+                ) : null}
               </div>
-              <div className="font-medium text-ink-heading">{m.description}</div>
-              {hasReadableMacros(m.structuredEstimate) ? (
-                <MealMacrosPanel raw={m.structuredEstimate} />
-              ) : m.isModelEstimate ? (
-                <p className="mt-2 text-sm text-ink-muted">
-                  Оценка БЖУ недоступна: модель не вернула данные для этой записи.
-                </p>
-              ) : null}
+              <div className="flex shrink-0 items-start pt-0.5">
+                <Button
+                  variant="ghost"
+                  className="px-2.5 py-2 text-primary hover:bg-primary-soft hover:text-primary-hover"
+                  disabled={remove.isPending || create.isPending}
+                  aria-label="Удалить запись о приёме пищи"
+                  onClick={() => {
+                    if (!window.confirm('Удалить эту запись из дневника?')) {
+                      return;
+                    }
+                    remove.mutate(m.id);
+                  }}
+                >
+                  <TrashIcon className="size-5 shrink-0 opacity-90" />
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
+        {remove.isError ? (
+          <p className="mt-3 text-sm text-red-600">
+            {remove.error instanceof Error ? remove.error.message : 'Не удалось удалить запись'}
+          </p>
+        ) : null}
         {!isLoading && (data?.meals.length ?? 0) === 0 ? (
           <p className="text-sm text-ink-muted">Записей пока нет</p>
         ) : null}

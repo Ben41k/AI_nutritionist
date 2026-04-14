@@ -6,6 +6,7 @@ import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Textarea } from '@/shared/components/Textarea';
 import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
+import { TrashIcon } from '@/shared/components/TrashIcon';
 import { chatPaths } from '@/features/chat/routes';
 
 type Msg = {
@@ -72,8 +73,9 @@ export function ChatThreadPage() {
         </Link>
         <Button
           variant="ghost"
-          className="text-sm text-red-600 hover:text-red-700"
+          className="px-2.5 py-2 text-primary hover:bg-primary-soft hover:text-primary-hover"
           disabled={removeThread.isPending || send.isPending}
+          aria-label={removeThread.isPending ? 'Удаление чата…' : 'Удалить чат'}
           onClick={() => {
             if (
               !window.confirm(
@@ -85,7 +87,9 @@ export function ChatThreadPage() {
             removeThread.mutate();
           }}
         >
-          {removeThread.isPending ? 'Удаление…' : 'Удалить чат'}
+          <TrashIcon
+            className={`size-5 shrink-0 ${removeThread.isPending ? 'animate-pulse opacity-60' : 'opacity-90'}`}
+          />
         </Button>
       </div>
       <DisclaimerBanner />

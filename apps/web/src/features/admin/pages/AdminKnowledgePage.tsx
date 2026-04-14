@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
+import { TrashIcon } from '@/shared/components/TrashIcon';
 import { Input } from '@/shared/components/Input';
 import { Textarea } from '@/shared/components/Textarea';
 
@@ -83,8 +84,14 @@ export function AdminKnowledgePage() {
                 <div className="font-medium text-ink-heading">{d.title}</div>
                 <div className="text-xs text-ink-muted">{d.chunkCount} чанков</div>
               </div>
-              <Button variant="pill" onClick={() => del.mutate(d.id)} disabled={del.isPending}>
-                Удалить
+              <Button
+                variant="ghost"
+                className="px-2.5 py-2 text-primary hover:bg-primary-soft hover:text-primary-hover"
+                onClick={() => del.mutate(d.id)}
+                disabled={del.isPending}
+                aria-label="Удалить документ"
+              >
+                <TrashIcon className="size-5 shrink-0 opacity-90" />
               </Button>
             </li>
           ))}
