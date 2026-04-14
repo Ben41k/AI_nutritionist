@@ -5,7 +5,7 @@ import { prisma } from '../prisma.js';
 import { sendError } from '../lib/errors.js';
 import { getBearerUser } from '../auth/context.js';
 import { createChatCompletion, createEmbedding } from '../lib/openrouter.js';
-import { searchSimilarChunks } from '../lib/vectorSearch.js';
+import { searchSimilarChunks, setChatMessageEmbedding } from '../lib/vectorSearch.js';
 
 const createThreadBody = z.object({
   title: z.string().max(200).optional(),
@@ -110,7 +110,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
 
     const content = parsed.data.content;
 
-    await prisma.chatMessage.create({
+    const userMessage = await prisma.chatMessage.create({
       data: { threadId, role: ChatRole.USER, content },
     });
 
@@ -129,12 +129,24 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       : '{}';
 
     let knowledgeContext = '';
+    let queryEmbedding: number[] | null = null;
     try {
-      const queryEmbedding = await createEmbedding(content);
-      const chunks = await searchSimilarChunks(prisma, queryEmbedding, 6);
-      knowledgeContext = chunks.map((c) => c.content).join('\n---\n');
+      queryEmbedding = await createEmbedding(content);
     } catch {
-      // continue without retrieval
+      /* no user embedding / no KB query */
+    }
+    if (queryEmbedding) {
+      try {
+        await setChatMessageEmbedding(prisma, userMessage.id, queryEmbedding);
+      } catch {
+        /* message row exists; embedding write failed */
+      }
+      try {
+        const chunks = await searchSimilarChunks(prisma, queryEmbedding, 6);
+        knowledgeContext = chunks.map((c) => c.content).join('\n---\n');
+      } catch {
+        /* continue without retrieval */
+      }
     }
 
     const history = await prisma.chatMessage.findMany({
@@ -159,9 +171,16 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       temperature: 0.35,
     });
 
-    await prisma.chatMessage.create({
+    const assistantMessage = await prisma.chatMessage.create({
       data: { threadId, role: ChatRole.ASSISTANT, content: assistantText },
     });
+
+    try {
+      const assistantEmbedding = await createEmbedding(assistantText);
+      await setChatMessageEmbedding(prisma, assistantMessage.id, assistantEmbedding);
+    } catch {
+      /* assistant reply stays without embedding */
+    }
 
     await prisma.chatThread.update({
       where: { id: threadId },

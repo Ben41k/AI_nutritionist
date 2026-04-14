@@ -35,7 +35,7 @@ async function main(): Promise<void> {
 
   await app.register(rateLimit, {
     global: true,
-    max: 400,
+    max: config.apiRateLimitMax,
     timeWindow: '1 minute',
   });
 
@@ -61,17 +61,7 @@ async function main(): Promise<void> {
   await registerProfileRoutes(app);
   await registerMealRoutes(app);
 
-  await app.register(
-    async (scope) => {
-      await scope.register(rateLimit, {
-        global: true,
-        max: 40,
-        timeWindow: '1 minute',
-      });
-      await registerChatRoutes(scope);
-    },
-    { prefix: '/' },
-  );
+  await registerChatRoutes(app);
 
   await registerAdminKnowledgeRoutes(app);
 

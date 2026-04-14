@@ -11,13 +11,28 @@ export const config = {
   databaseUrl: required('DATABASE_URL'),
   jwtSecret: required('JWT_SECRET'),
   clientOrigin: required('CLIENT_ORIGIN'),
+  /** Optional override; otherwise CLIENT_ORIGIN is sent (OpenRouter expects a real site URL for some providers). */
+  openRouterHttpReferer: process.env.OPENROUTER_HTTP_REFERER?.trim(),
+  openRouterAppTitle: process.env.OPENROUTER_X_TITLE?.trim() ?? 'AI Nutritionist',
   openRouterApiKey: required('OPENROUTER_API_KEY'),
   openRouterChatModel: required('OPENROUTER_CHAT_MODEL'),
   openRouterEmbeddingModel: required('OPENROUTER_EMBEDDING_MODEL'),
+  /**
+   * Google AI (Gemini) API key for embedding fallback when OpenRouter rejects the request.
+   * Accepts `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
+   */
+  geminiApiKey: process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim(),
+  /** Gemini embedding model id for REST path `models/{id}:embedContent` (default matches 1536-dim output). */
+  geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL?.trim() ?? 'gemini-embedding-001',
   embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? 1536),
   bootstrapAdminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL?.toLowerCase().trim(),
   nodeEnv: process.env.NODE_ENV ?? 'development',
   isProd: process.env.NODE_ENV === 'production',
+  /** Global HTTP rate limit (per IP) per minute. */
+  apiRateLimitMax: (() => {
+    const n = Number(process.env.API_RATE_LIMIT_MAX);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 400;
+  })(),
 };
 
 if (config.embeddingDimensions !== 1536) {

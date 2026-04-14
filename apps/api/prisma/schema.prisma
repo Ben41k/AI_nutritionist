@@ -109,6 +109,7 @@ model ChatMessage {
   role      ChatRole
   content   String
   createdAt DateTime  @default(now())
+  embedding Unsupported("vector(1536)")?
 
   @@index([threadId, createdAt])
 }

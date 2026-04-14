@@ -33,6 +33,23 @@ export async function searchSimilarChunks(
   return rows;
 }
 
+export async function setChatMessageEmbedding(
+  prisma: PrismaClient,
+  messageId: string,
+  embedding: number[],
+): Promise<void> {
+  const vec = toVectorLiteral(embedding);
+  await prisma.$executeRawUnsafe(
+    `
+    UPDATE "ChatMessage"
+    SET embedding = $1::vector
+    WHERE id = $2
+    `,
+    vec,
+    messageId,
+  );
+}
+
 export async function insertChunkWithEmbedding(
   prisma: PrismaClient,
   params: {
