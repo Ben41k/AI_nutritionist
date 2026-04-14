@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Textarea } from '@/shared/components/Textarea';
 import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
+import { chatPaths } from '@/features/chat/routes';
 
 type Msg = {
   id: string;
@@ -16,6 +17,7 @@ type Msg = {
 
 export function ChatThreadPage() {
   const { threadId } = useParams<{ threadId: string }>();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const [text, setText] = useState('');
   const [lastMeta, setLastMeta] = useState<string | null>(null);
@@ -45,10 +47,47 @@ export function ChatThreadPage() {
     },
   });
 
+  const removeThread = useMutation({
+    mutationFn: async () => {
+      if (!threadId) throw new Error('Нет идентификатора чата');
+      return apiJson<{ ok: boolean }>(`/chat/threads/${threadId}`, { method: 'DELETE' });
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['chat-threads'] });
+      void qc.removeQueries({ queryKey: ['chat-messages', threadId] });
+      navigate(chatPaths.root);
+    },
+  });
+
   if (!threadId) return null;
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Link
+          to={chatPaths.root}
+          className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink-body transition hover:border-primary hover:shadow-soft"
+        >
+          ← К диалогам
+        </Link>
+        <Button
+          variant="ghost"
+          className="text-sm text-red-600 hover:text-red-700"
+          disabled={removeThread.isPending || send.isPending}
+          onClick={() => {
+            if (
+              !window.confirm(
+                'Удалить этот чат? Все сообщения будут удалены безвозвратно.',
+              )
+            ) {
+              return;
+            }
+            removeThread.mutate();
+          }}
+        >
+          {removeThread.isPending ? 'Удаление…' : 'Удалить чат'}
+        </Button>
+      </div>
       <DisclaimerBanner />
       {lastMeta ? <p className="text-xs text-ink-muted">{lastMeta}</p> : null}
       <Card className="flex max-h-[60vh] flex-col">
@@ -85,6 +124,13 @@ export function ChatThreadPage() {
       {send.isError ? (
         <p className="text-sm text-red-600">
           {send.error instanceof Error ? send.error.message : 'Ошибка отправки'}
+        </p>
+      ) : null}
+      {removeThread.isError ? (
+        <p className="text-sm text-red-600">
+          {removeThread.error instanceof Error
+            ? removeThread.error.message
+            : 'Не удалось удалить чат'}
         </p>
       ) : null}
     </div>

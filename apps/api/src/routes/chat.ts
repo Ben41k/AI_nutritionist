@@ -192,4 +192,21 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       retrievalUsed: knowledgeContext.length > 0,
     });
   });
+
+  app.delete('/chat/threads/:threadId', async (req, reply) => {
+    const u = getBearerUser(req);
+    if (!u) {
+      sendError(reply, 401, 'UNAUTHORIZED', 'Authentication required');
+      return;
+    }
+    const { threadId } = req.params as { threadId: string };
+    const removed = await prisma.chatThread.deleteMany({
+      where: { id: threadId, userId: u.sub },
+    });
+    if (removed.count === 0) {
+      sendError(reply, 404, 'NOT_FOUND', 'Thread not found');
+      return;
+    }
+    await reply.send({ ok: true });
+  });
 }
