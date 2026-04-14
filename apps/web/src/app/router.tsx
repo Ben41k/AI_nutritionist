@@ -14,10 +14,10 @@ export const router = createBrowserRouter([
       {
         index: true,
         lazy: async () => {
-          const { HomePage } = await import('@/pages/HomePage');
-          return { Component: HomePage };
+          const { DashboardPage } = await import('@/features/dashboard/pages/DashboardPage');
+          return { Component: DashboardPage };
         },
-        handle: { title: 'Обзор', subtitle: 'Рабочее место' },
+        handle: { title: 'Метрики', subtitle: 'Калькулятор и аналитика' },
       },
       {
         path: 'profile',

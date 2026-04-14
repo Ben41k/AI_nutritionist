@@ -14,6 +14,9 @@ const profilePatch = z.object({
   activityLevel: z.nativeEnum(ActivityLevel).optional(),
   allergies: z.string().max(4000).optional().nullable(),
   preferences: z.string().max(4000).optional().nullable(),
+  targetWeightKg: z.number().min(30).max(250).optional().nullable(),
+  startWeightKg: z.number().min(30).max(250).optional().nullable(),
+  waterGoalMl: z.number().int().min(500).max(12000).optional(),
 });
 
 export async function registerProfileRoutes(app: FastifyInstance): Promise<void> {

@@ -48,31 +48,71 @@ enum ChatRole {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  email        String    @unique
-  passwordHash String
-  role         Role      @default(USER)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  profile      Profile?
-  mealEntries  MealEntry[]
-  chatThreads  ChatThread[]
+  id               String             @id @default(cuid())
+  email            String             @unique
+  passwordHash     String
+  role             Role               @default(USER)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  profile          Profile?
+  mealEntries      MealEntry[]
+  chatThreads      ChatThread[]
+  weightEntries    WeightEntry[]
+  dailyWaters      DailyWater[]
+  bodyMeasurements BodyMeasurement[]
 }
 
 model Profile {
-  id             String          @id @default(cuid())
-  userId         String          @unique
-  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  age            Int?
-  sex            Sex             @default(UNSPECIFIED)
-  weightKg       Float?
-  heightCm       Float?
-  goal           NutritionGoal   @default(MAINTENANCE)
-  activityLevel  ActivityLevel   @default(SEDENTARY)
-  allergies      String?
-  preferences    String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  userId          String          @unique
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  age             Int?
+  sex             Sex             @default(UNSPECIFIED)
+  weightKg        Float?
+  heightCm        Float?
+  goal            NutritionGoal   @default(MAINTENANCE)
+  activityLevel   ActivityLevel   @default(SEDENTARY)
+  allergies       String?
+  preferences     String?
+  targetWeightKg  Float?
+  startWeightKg   Float?
+  waterGoalMl     Int             @default(2000)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model WeightEntry {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordedAt DateTime
+  weightKg   Float
+  createdAt  DateTime @default(now())
+
+  @@index([userId, recordedAt])
+}
+
+model DailyWater {
+  id      String   @id @default(cuid())
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day     DateTime @db.Date
+  totalMl Int      @default(0)
+
+  @@unique([userId, day])
+}
+
+model BodyMeasurement {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recordedAt DateTime
+  neckCm     Float?
+  waistCm    Float?
+  hipsCm     Float?
+  createdAt  DateTime @default(now())
+
+  @@index([userId, recordedAt])
 }
 
 model MealEntry {

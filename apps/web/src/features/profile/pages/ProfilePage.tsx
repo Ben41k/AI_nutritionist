@@ -17,6 +17,8 @@ const WEIGHT_MIN = 35;
 const WEIGHT_MAX = 250;
 const HEIGHT_MIN = 120;
 const HEIGHT_MAX = 230;
+const WATER_GOAL_MIN = 500;
+const WATER_GOAL_MAX = 12000;
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -55,6 +57,9 @@ type Profile = {
   activityLevel: (typeof activity)[number];
   allergies: string | null;
   preferences: string | null;
+  targetWeightKg: number | null;
+  startWeightKg: number | null;
+  waterGoalMl: number;
 };
 
 function ProfileForm({ profile }: { profile: Profile }) {
@@ -77,6 +82,18 @@ function ProfileForm({ profile }: { profile: Profile }) {
           form.heightCm != null && !Number.isNaN(form.heightCm)
             ? clamp(Math.round(form.heightCm), HEIGHT_MIN, HEIGHT_MAX)
             : null,
+        targetWeightKg:
+          form.targetWeightKg != null && !Number.isNaN(form.targetWeightKg)
+            ? clamp(form.targetWeightKg, WEIGHT_MIN, WEIGHT_MAX)
+            : null,
+        startWeightKg:
+          form.startWeightKg != null && !Number.isNaN(form.startWeightKg)
+            ? clamp(form.startWeightKg, WEIGHT_MIN, WEIGHT_MAX)
+            : null,
+        waterGoalMl:
+          form.waterGoalMl != null && !Number.isNaN(form.waterGoalMl)
+            ? clamp(Math.round(form.waterGoalMl), WATER_GOAL_MIN, WATER_GOAL_MAX)
+            : 2000,
       };
       return apiJson<{ profile: Profile }>('/profile', {
         method: 'PATCH',
@@ -197,6 +214,63 @@ function ProfileForm({ profile }: { profile: Profile }) {
               </option>
             ))}
           </select>
+        </label>
+        <label className="text-xs font-semibold text-ink-muted">
+          Целевой вес (кг)
+          <Input
+            className="mt-1 rounded-md"
+            type="number"
+            min={WEIGHT_MIN}
+            max={WEIGHT_MAX}
+            step="0.1"
+            value={form.targetWeightKg ?? ''}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                targetWeightKg: e.target.value ? Number(e.target.value) : null,
+              })
+            }
+          />
+          <span className="mt-1 block text-[11px] font-normal text-ink-muted">
+            Для процента выполнения цели на вкладке «Метрики»
+          </span>
+        </label>
+        <label className="text-xs font-semibold text-ink-muted">
+          Стартовый вес (кг)
+          <Input
+            className="mt-1 rounded-md"
+            type="number"
+            min={WEIGHT_MIN}
+            max={WEIGHT_MAX}
+            step="0.1"
+            value={form.startWeightKg ?? ''}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                startWeightKg: e.target.value ? Number(e.target.value) : null,
+              })
+            }
+          />
+          <span className="mt-1 block text-[11px] font-normal text-ink-muted">
+            Если пусто — берётся самая ранняя запись веса из журнала
+          </span>
+        </label>
+        <label className="text-xs font-semibold text-ink-muted sm:col-span-2">
+          Норма воды (мл / сутки)
+          <Input
+            className="mt-1 max-w-xs rounded-md"
+            type="number"
+            min={WATER_GOAL_MIN}
+            max={WATER_GOAL_MAX}
+            step="50"
+            value={form.waterGoalMl ?? 2000}
+            onChange={(e) =>
+              setForm({
+                ...form,
+                waterGoalMl: e.target.value ? Number(e.target.value) : 2000,
+              })
+            }
+          />
         </label>
       </div>
       <label className="mt-4 block text-xs font-semibold text-ink-muted">

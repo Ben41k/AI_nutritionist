@@ -9,6 +9,7 @@ import { prisma } from './prisma.js';
 import { registerAuthRoutes } from './routes/auth.js';
 import { registerProfileRoutes } from './routes/profile.js';
 import { registerMealRoutes } from './routes/meals.js';
+import { registerTrackingRoutes } from './routes/tracking.js';
 import { registerChatRoutes } from './routes/chat.js';
 import { registerAdminKnowledgeRoutes } from './routes/adminKnowledge.js';
 
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
   await registerAuthRoutes(app);
   await registerProfileRoutes(app);
   await registerMealRoutes(app);
+  await registerTrackingRoutes(app);
 
   await registerChatRoutes(app);
 

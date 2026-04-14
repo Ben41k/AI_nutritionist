@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
 
 const nav = [
-  { to: '/', label: 'Обзор', icon: 'grid' },
+  { to: '/', label: 'Метрики', icon: 'chart' },
   { to: '/meals', label: 'Дневник', icon: 'meal' },
   { to: '/chat', label: 'Чат', icon: 'chat' },
   { to: '/profile', label: 'Профиль', icon: 'user' },
@@ -11,13 +11,13 @@ const nav = [
 
 function Icon({ name }: { name: (typeof nav)[number]['icon'] }) {
   const common = 'h-5 w-5';
-  if (name === 'grid')
+  if (name === 'chart')
     return (
       <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <rect x="3" y="3" width="7" height="7" rx="1" />
-        <rect x="14" y="3" width="7" height="7" rx="1" />
-        <rect x="3" y="14" width="7" height="7" rx="1" />
-        <rect x="14" y="14" width="7" height="7" rx="1" />
+        <path d="M4 19h16" />
+        <path d="M7 15v-4" />
+        <path d="M12 15V9" />
+        <path d="M17 15V5" />
       </svg>
     );
   if (name === 'meal')
