@@ -8,6 +8,7 @@ import { Textarea } from '@/shared/components/Textarea';
 import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { chatPaths } from '@/features/chat/routes';
+import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
 
 type Msg = {
   id: string;
@@ -121,6 +122,9 @@ export function ChatThreadPage() {
           className="flex-1 rounded-md"
           value={text}
           onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) =>
+            handleEnterSubmit(e, !send.isPending && Boolean(text.trim()), () => send.mutate())
+          }
           placeholder="Ваш вопрос…"
         />
         <Button

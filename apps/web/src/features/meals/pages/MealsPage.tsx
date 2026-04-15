@@ -6,6 +6,7 @@ import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
 import { Textarea } from '@/shared/components/Textarea';
 import { TrashIcon } from '@/shared/components/TrashIcon';
+import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
 
 type Meal = {
   id: string;
@@ -182,7 +183,14 @@ export function MealsPage() {
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink-heading">Новый приём пищи</h2>
-        <div className="space-y-3">
+        <form
+          className="space-y-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (create.isPending || !description.trim()) return;
+            create.mutate();
+          }}
+        >
           <label className="text-xs font-semibold text-ink-muted">
             Дата
             <Input
@@ -207,6 +215,11 @@ export function MealsPage() {
               className="mt-1 rounded-md"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              onKeyDown={(e) =>
+                handleEnterSubmit(e, !create.isPending && Boolean(description.trim()), () =>
+                  create.mutate(),
+                )
+              }
             />
           </label>
           <label className="flex items-center gap-2 text-sm text-ink-body">
@@ -219,12 +232,12 @@ export function MealsPage() {
           </label>
           {create.isError ? <p className="text-sm text-red-600">Не удалось сохранить</p> : null}
           <Button
-            onClick={() => create.mutate()}
+            type="submit"
             disabled={create.isPending || !description.trim()}
           >
             {create.isPending ? 'Сохранение…' : 'Добавить'}
           </Button>
-        </div>
+        </form>
       </Card>
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink-heading">За выбранный день</h2>

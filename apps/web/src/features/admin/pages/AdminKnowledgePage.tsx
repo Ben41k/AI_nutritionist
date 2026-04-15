@@ -6,6 +6,7 @@ import { Button } from '@/shared/components/Button';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { Input } from '@/shared/components/Input';
 import { Textarea } from '@/shared/components/Textarea';
+import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
 
 type Doc = { id: string; title: string; createdAt: string; updatedAt: string; chunkCount: number };
 
@@ -48,6 +49,14 @@ export function AdminKnowledgePage() {
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
+        <form
+          className="contents"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (create.isPending || !title.trim() || !content.trim()) return;
+            create.mutate();
+          }}
+        >
         <h2 className="mb-4 text-lg font-semibold text-ink-heading">Новый документ</h2>
         <p className="mb-3 text-sm text-ink-muted">
           Текст будет разбит на чанки и проиндексирован для RAG.
@@ -63,14 +72,22 @@ export function AdminKnowledgePage() {
           placeholder="Содержимое"
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          onKeyDown={(e) =>
+            handleEnterSubmit(
+              e,
+              !create.isPending && Boolean(title.trim()) && Boolean(content.trim()),
+              () => create.mutate(),
+            )
+          }
         />
         {error ? <p className="mb-2 text-sm text-red-600">{error}</p> : null}
         <Button
-          onClick={() => create.mutate()}
+          type="submit"
           disabled={create.isPending || !title.trim() || !content.trim()}
         >
           {create.isPending ? 'Индексация…' : 'Загрузить'}
         </Button>
+        </form>
       </Card>
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink-heading">Документы</h2>

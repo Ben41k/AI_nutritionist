@@ -22,6 +22,7 @@ import {
   type NutritionGoal,
   type Sex,
 } from '@/shared/lib/nutritionMetrics';
+import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
 
 type Profile = {
   id: string;
@@ -104,6 +105,8 @@ function waterRangeQuery(from: string, to: string): string {
   return `/tracking/water?${p.toString()}`;
 }
 
+const METRIC_EMPTY = 'не задано';
+
 function Metric({
   title,
   value,
@@ -114,19 +117,28 @@ function Metric({
   description: string;
 }) {
   return (
-    <div className="rounded-lg border border-border/80 bg-surface/60 px-4 py-3">
-      <div className="text-xs font-semibold uppercase tracking-wide text-ink-muted">{title}</div>
-      <div className="mt-1 text-lg font-bold text-ink-heading">{value}</div>
-      <p className="mt-1 text-[11px] leading-snug text-ink-muted">{description}</p>
+    <div
+      className="group relative z-0 rounded-2xl border border-border/35 bg-surface/35 px-4 py-3.5 shadow-sm shadow-black/[0.03] ring-1 ring-black/[0.02] transition-[box-shadow,border-color,background-color,z-index] duration-200 hover:z-20 hover:border-border/50 hover:bg-surface/55 hover:shadow-md hover:shadow-black/[0.04] focus-within:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:z-20 dark:ring-white/[0.04]"
+      tabIndex={0}
+      role="group"
+      aria-label={title}
+    >
+      <div className="text-[11px] font-medium uppercase tracking-wide text-ink-muted/80">{title}</div>
+      <div className="mt-1.5 text-lg font-semibold tracking-tight text-ink-heading">{value}</div>
+      <p
+        className="pointer-events-none invisible absolute left-0 right-0 top-full z-30 mt-1.5 rounded-xl border border-border/40 bg-surface/95 px-3 py-2 text-[11px] leading-relaxed text-ink-muted/90 opacity-0 shadow-lg shadow-black/10 backdrop-blur-sm transition-[opacity,visibility] duration-200 group-hover:pointer-events-auto group-hover:visible group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:opacity-100 group-active:pointer-events-auto group-active:visible group-active:opacity-100"
+      >
+        {description}
+      </p>
     </div>
   );
 }
 
 function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3">
+    <section className="space-y-4 pb-2">
       <h2 className="text-base font-semibold text-ink-heading">{heading}</h2>
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{children}</div>
+      <div className="grid items-start gap-4 sm:grid-cols-2 xl:grid-cols-4">{children}</div>
     </section>
   );
 }
@@ -378,8 +390,15 @@ export function DashboardPage() {
     addMeasurement.mutate(body);
   };
 
+  const canSubmitMeasurement =
+    !addMeasurement.isPending &&
+    [neck, waist, hips].some((s) => {
+      const x = Number(s.replace(',', '.'));
+      return s.trim() !== '' && Number.isFinite(x);
+    });
+
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
+    <div className="mx-auto max-w-6xl space-y-12 sm:space-y-14">
       <DisclaimerBanner />
 
       <Section heading="1. Основные расчётные показатели (калькулятор)">
@@ -388,13 +407,13 @@ export function DashboardPage() {
           value={
             bmiVal != null
               ? `${bmiVal.toFixed(1)} · ${bmiLabelRu(bmiVal)}`
-              : 'Укажите вес и рост в профиле'
+              : METRIC_EMPTY
           }
           description="Индекс массы тела: базовый маркер состояния веса."
         />
         <Metric
           title="BMR"
-          value={bmr != null ? `${bmr} ккал/сут` : 'Нужны возраст, вес, рост, пол'}
+          value={bmr != null ? `${bmr} ккал/сут` : METRIC_EMPTY}
           description="Базальный метаболизм: минимальный расход энергии в покое (Миффлин — Сан Жеор)."
         />
         <Metric
@@ -402,7 +421,7 @@ export function DashboardPage() {
           value={
             tdee != null
               ? `${tdee} ккал/сут · ×${activityMultiplier(profile.activityLevel).toFixed(3)}`
-              : 'Сначала рассчитайте BMR'
+              : METRIC_EMPTY
           }
           description="Суточный расход: норма калорий с учётом коэффициента активности."
         />
@@ -411,7 +430,7 @@ export function DashboardPage() {
           value={
             whtrVal != null
               ? `${whtrVal.toFixed(3)} (${whtrVal <= 0.5 ? 'в пределах ориентира до 0,5' : 'выше ориентира 0,5'})`
-              : 'Добавьте замер талии ниже'
+              : METRIC_EMPTY
           }
           description="Талия / рост: коэффициент распределения жировой ткани (норма до 0,5)."
         />
@@ -420,7 +439,7 @@ export function DashboardPage() {
       <Section heading="2. Динамические показатели (трекинг)">
         <Metric
           title="Средненедельный вес"
-          value={weeklyAvg != null ? `${weeklyAvg} кг` : 'Добавьте весовые записи'}
+          value={weeklyAvg != null ? `${weeklyAvg} кг` : METRIC_EMPTY}
           description="Среднее по записям за 7 суток до последнего замера (сглаживание скачков)."
         />
         <Metric
@@ -428,7 +447,7 @@ export function DashboardPage() {
           value={
             deltaKg != null
               ? `${deltaKg > 0 ? '+' : ''}${deltaKg} кг`
-              : 'Укажите стартовый вес в профиле или добавьте историю'
+              : METRIC_EMPTY
           }
           description="Разница между стартовым и текущим весом."
         />
@@ -437,7 +456,7 @@ export function DashboardPage() {
           value={
             goalPct != null
               ? `${goalPct}%`
-              : 'Задайте целевой вес и цель «набор»/«снижение» в профиле'
+              : METRIC_EMPTY
           }
           description="Насколько вы близки к желаемому результату."
         />
@@ -446,7 +465,7 @@ export function DashboardPage() {
           value={
             waterPct != null
               ? `${waterTodayMl} / ${waterGoal} мл (${waterPct}%)`
-              : '—'
+              : METRIC_EMPTY
           }
           description="Выпитая вода за сутки относительно нормы из профиля."
         />
@@ -458,7 +477,7 @@ export function DashboardPage() {
           value={
             macros != null
               ? `Б ${macros.proteinG} г · Ж ${macros.fatG} г · У ${macros.carbsG} г`
-              : 'Нужен TDEE и вес'
+              : METRIC_EMPTY
           }
           description="Суточная норма белков, жиров и углеводов (оценка от TDEE и белка г/кг)."
         />
@@ -477,21 +496,19 @@ export function DashboardPage() {
                   measDynamics.hips ? `бёдра ${measDynamics.hips}` : null,
                 ]
                   .filter(Boolean)
-                  .join(' · ') || 'Недостаточно парных значений'
-              : measurements.length < 2
-                ? 'Нужно минимум два замера'
-                : 'Недостаточно парных значений'
+                  .join(' · ') || METRIC_EMPTY
+              : METRIC_EMPTY
           }
           description="Сравнение двух последних замеров с данными по каждому параметру."
         />
         <Metric
           title="Замеры"
-          value={measurements.length ? `${measurements.length} в журнале` : 'Пока нет'}
+          value={measurements.length ? `${measurements.length} в журнале` : METRIC_EMPTY}
           description="Добавляйте замеры ниже — для WHtR используется последняя талия."
         />
       </Section>
 
-      <section className="space-y-3">
+      <section className="space-y-4 pb-2">
         <h2 className="text-base font-semibold text-ink-heading">4. Статистика (аналитика)</h2>
         <p className="text-xs text-ink-muted">
           Период: последние 14 дней по локальным суткам.{' '}
@@ -499,20 +516,20 @@ export function DashboardPage() {
             Дневник питания
           </Link>
         </p>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="grid items-start gap-4 sm:grid-cols-2">
           <Metric
             title="Среднесуточный дефицит / профицит"
             value={
               analytics?.avgBalance != null
                 ? `${analytics.avgBalance > 0 ? 'Дефицит' : analytics.avgBalance < 0 ? 'Профицит' : 'Баланс'} ${Math.abs(analytics.avgBalance)} ккал`
-                : 'Нет дней с оценкой ккал в дневнике'
+                : METRIC_EMPTY
             }
             description="Среднее по дням, где есть калории: целевые ккал по цели минус сумма за день."
           />
           <Metric
             title="Индекс приверженности"
             value={
-              analytics?.adherence != null ? `${analytics.adherence}%` : 'Нет данных по калориям'
+              analytics?.adherence != null ? `${analytics.adherence}%` : METRIC_EMPTY
             }
             description="Процент дней с данными по ккал, когда сумма укладывается в допуск ±12% (не менее ±200 ккал) от целевой нормы."
           />
@@ -537,6 +554,9 @@ export function DashboardPage() {
               placeholder="кг"
               value={weightInput}
               onChange={(e) => setWeightInput(e.target.value)}
+              onKeyDown={(e) =>
+                handleEnterSubmit(e, !addWeight.isPending && Boolean(weightInput.trim()), weightSubmit)
+              }
             />
             <Button onClick={weightSubmit} disabled={addWeight.isPending || !weightInput.trim()}>
               {addWeight.isPending ? '…' : 'Сохранить'}
@@ -568,6 +588,9 @@ export function DashboardPage() {
               placeholder="Шея, см"
               value={neck}
               onChange={(e) => setNeck(e.target.value)}
+              onKeyDown={(e) =>
+                handleEnterSubmit(e, canSubmitMeasurement, measurementSubmit)
+              }
             />
             <Input
               className="rounded-md"
@@ -576,6 +599,9 @@ export function DashboardPage() {
               placeholder="Талия, см"
               value={waist}
               onChange={(e) => setWaist(e.target.value)}
+              onKeyDown={(e) =>
+                handleEnterSubmit(e, canSubmitMeasurement, measurementSubmit)
+              }
             />
             <Input
               className="rounded-md"
@@ -584,6 +610,9 @@ export function DashboardPage() {
               placeholder="Бёдра, см"
               value={hips}
               onChange={(e) => setHips(e.target.value)}
+              onKeyDown={(e) =>
+                handleEnterSubmit(e, canSubmitMeasurement, measurementSubmit)
+              }
             />
           </div>
           <Button className="mt-3" onClick={measurementSubmit} disabled={addMeasurement.isPending}>

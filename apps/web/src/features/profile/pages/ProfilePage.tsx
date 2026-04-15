@@ -105,6 +105,13 @@ function ProfileForm({ profile }: { profile: Profile }) {
 
   return (
     <Card>
+      <form
+        className="contents"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!save.isPending) save.mutate();
+        }}
+      >
       <h2 className="mb-4 text-lg font-semibold text-ink-heading">Антропометрия и цели</h2>
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="text-xs font-semibold text-ink-muted">
@@ -291,9 +298,10 @@ function ProfileForm({ profile }: { profile: Profile }) {
       </label>
       {save.isError ? <p className="mt-3 text-sm text-red-600">Ошибка сохранения</p> : null}
       {save.isSuccess ? <p className="mt-3 text-sm text-primary">Сохранено</p> : null}
-      <Button className="mt-6" onClick={() => save.mutate()} disabled={save.isPending}>
+      <Button type="submit" className="mt-6" disabled={save.isPending}>
         {save.isPending ? 'Сохранение…' : 'Сохранить'}
       </Button>
+      </form>
     </Card>
   );
 }
