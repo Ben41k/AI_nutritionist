@@ -1,10 +1,34 @@
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { useState } from 'react';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
+import { useAuth } from '@/features/auth/hooks/useAuth';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
+
+const RATION_STORAGE_PREFIX = 'ai-nutritionist:monthly-ration:';
+
+function readStoredRation(userId: string): string | null {
+  try {
+    const v = sessionStorage.getItem(RATION_STORAGE_PREFIX + userId);
+    return v != null && v.length > 0 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistRation(userId: string, plan: string | null): void {
+  try {
+    const key = RATION_STORAGE_PREFIX + userId;
+    if (plan == null || plan.length === 0) {
+      sessionStorage.removeItem(key);
+    } else {
+      sessionStorage.setItem(key, plan);
+    }
+  } catch {
+    /* quota / private mode */
+  }
+}
 
 type Profile = {
   age: number | null;
@@ -26,9 +50,30 @@ function profileLooksSparse(p: Profile): boolean {
   );
 }
 
+function generationErrorMessage(err: unknown): string {
+  if (err instanceof ApiError) return err.message;
+  return 'Не удалось сформировать рацион. Проверьте соединение и повторите попытку.';
+}
+
+const rationStoredQueryKey = (userId: string) => ['ration', 'monthly-plan-stored', userId] as const;
+
 export function RationPage() {
-  const [plan, setPlan] = useState<string | null>(null);
-  const [lastError, setLastError] = useState<string | null>(null);
+  const { data: user } = useAuth();
+  const qc = useQueryClient();
+
+  const rationStoredQuery = useQuery({
+    queryKey: rationStoredQueryKey(user?.id ?? ''),
+    enabled: Boolean(user?.id),
+    queryFn: async ({ queryKey }) => {
+      const userId = queryKey[2];
+      if (typeof userId !== 'string' || userId.length === 0) return null;
+      return readStoredRation(userId);
+    },
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+
+  const plan = rationStoredQuery.data ?? null;
 
   const profileQuery = useQuery({
     queryKey: ['profile'],
@@ -42,17 +87,17 @@ export function RationPage() {
         body: JSON.stringify({}),
       }),
     onSuccess: (data) => {
-      setLastError(null);
-      setPlan(data.plan);
-    },
-    onError: (err: unknown) => {
-      if (err instanceof ApiError) {
-        setLastError(err.message);
-        return;
+      const uid = user?.id;
+      if (uid) {
+        persistRation(uid, data.plan);
+        qc.setQueryData(rationStoredQueryKey(uid), data.plan);
       }
-      setLastError('Не удалось сформировать рацион. Проверьте соединение и повторите попытку.');
     },
   });
+
+  const generationError = generate.isError && generate.error != null
+    ? generationErrorMessage(generate.error)
+    : null;
 
   const profile = profileQuery.data?.profile;
 
@@ -98,12 +143,22 @@ export function RationPage() {
                 {generate.isPending ? 'Формируем…' : 'Сформировать рацион'}
               </Button>
               {plan ? (
-                <Button variant="pill" disabled={generate.isPending} onClick={() => setPlan(null)}>
+                <Button
+                  variant="pill"
+                  disabled={generate.isPending}
+                  onClick={() => {
+                    const uid = user?.id;
+                    if (uid) {
+                      persistRation(uid, null);
+                      qc.setQueryData(rationStoredQueryKey(uid), null);
+                    }
+                  }}
+                >
                   Очистить
                 </Button>
               ) : null}
             </div>
-            {lastError ? <p className="text-sm text-red-600">{lastError}</p> : null}
+            {generationError ? <p className="text-sm text-red-600">{generationError}</p> : null}
           </Card>
 
           {plan ? (
