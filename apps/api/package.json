@@ -11,6 +11,7 @@
     "verify:embedding": "tsx scripts/verify-embedding-write.ts",
     "verify:embedding:pipeline": "tsx scripts/verify-embedding-pipeline.ts",
     "verify:embedding:cosine": "tsx scripts/verify-embedding-cosine-similarity.ts",
+    "reembed:knowledge": "tsx scripts/reembed-knowledge.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy"
@@ -18,6 +19,7 @@
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
     "@fastify/cors": "^11.0.1",
+    "@fastify/multipart": "^9.4.0",
     "@fastify/rate-limit": "^10.2.2",
     "@prisma/client": "^6.19.0",
     "bcryptjs": "^3.0.2",

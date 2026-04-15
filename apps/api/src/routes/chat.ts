@@ -2,8 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { ChatRole } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { config } from '../config.js';
 import { sendError } from '../lib/errors.js';
 import { getBearerUser } from '../auth/context.js';
+import { openRouterRateLimitKey } from '../lib/rateLimitKeys.js';
+import { clampLimit, decodeCursor, encodeCursor } from '../lib/cursorPagination.js';
 import { createChatCompletion, createEmbedding } from '../lib/openrouter.js';
 import {
   searchSimilarChunks,
@@ -18,6 +21,11 @@ const createThreadBody = z.object({
 
 const postMessageBody = z.object({
   content: z.string().min(1).max(8000),
+});
+
+const messagesListQuery = z.object({
+  limit: z.coerce.number().int().positive().max(100).optional(),
+  cursor: z.string().optional(),
 });
 
 function formatDialogMemoryForPrompt(rows: RetrievedThreadMessage[]): string {
@@ -99,6 +107,11 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
     const { threadId } = req.params as { threadId: string };
+    const qParsed = messagesListQuery.safeParse(req.query);
+    if (!qParsed.success) {
+      sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid query', qParsed.error.flatten());
+      return;
+    }
     const thread = await prisma.chatThread.findFirst({
       where: { id: threadId, userId: u.sub },
     });
@@ -106,15 +119,55 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       sendError(reply, 404, 'NOT_FOUND', 'Thread not found');
       return;
     }
+    const limit = clampLimit(qParsed.data.limit);
+    const rawCursor = qParsed.data.cursor?.trim();
+    const cur = rawCursor ? decodeCursor(rawCursor) : null;
+    if (rawCursor && cur == null) {
+      sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid cursor');
+      return;
+    }
+    const take = limit + 1;
+    const cursorWhere =
+      cur != null
+        ? {
+            OR: [
+              { createdAt: { gt: new Date(cur.t) } },
+              { AND: [{ createdAt: new Date(cur.t) }, { id: { gt: cur.id } }] },
+            ],
+          }
+        : {};
+
     const messages = await prisma.chatMessage.findMany({
-      where: { threadId },
-      orderBy: { createdAt: 'asc' },
-      take: 200,
+      where: { threadId, ...cursorWhere },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      take,
     });
-    await reply.send({ messages });
+
+    const hasMore = messages.length > limit;
+    const page = hasMore ? messages.slice(0, limit) : messages;
+    const last = page[page.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? encodeCursor({ t: last.createdAt.toISOString(), id: last.id })
+        : undefined;
+
+    await reply.send({ messages: page, hasMore, nextCursor });
   });
 
-  app.post('/chat/threads/:threadId/messages', async (req, reply) => {
+  app.post(
+    '/chat/threads/:threadId/messages',
+    {
+      config: {
+        rateLimit: {
+          max: config.apiLlmRateLimitMax,
+          timeWindow: config.apiLlmRateLimitWindow,
+          hook: 'preHandler',
+          keyGenerator: openRouterRateLimitKey,
+          groupId: 'openrouter-llm',
+        },
+      },
+    },
+    async (req, reply) => {
     const u = getBearerUser(req);
     if (!u) {
       sendError(reply, 401, 'UNAUTHORIZED', 'Authentication required');

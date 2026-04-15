@@ -27,7 +27,21 @@ export function ChatThreadPage() {
   const { data } = useQuery({
     queryKey: ['chat-messages', threadId],
     enabled: Boolean(threadId),
-    queryFn: () => apiJson<{ messages: Msg[] }>(`/chat/threads/${threadId}/messages`),
+    queryFn: async () => {
+      const messages: Msg[] = [];
+      let cursor: string | undefined;
+      for (;;) {
+        const q = new URLSearchParams({ limit: '100' });
+        if (cursor) q.set('cursor', cursor);
+        const r = await apiJson<{ messages: Msg[]; hasMore: boolean; nextCursor?: string }>(
+          `/chat/threads/${threadId}/messages?${q.toString()}`,
+        );
+        messages.push(...r.messages);
+        if (!r.hasMore || !r.nextCursor) break;
+        cursor = r.nextCursor;
+      }
+      return { messages };
+    },
   });
 
   const send = useMutation({

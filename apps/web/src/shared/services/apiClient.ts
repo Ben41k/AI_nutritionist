@@ -20,6 +20,26 @@ export class ApiError extends Error {
   }
 }
 
+export async function apiFormDataJson<T>(path: string, formData: FormData): Promise<T> {
+  const res = await fetch(`${base}${path}`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+  const text = await res.text();
+  const json = text ? (JSON.parse(text) as unknown) : null;
+  if (!res.ok) {
+    const body = (json ?? { error: { code: 'UNKNOWN', message: res.statusText } }) as ApiErrorBody;
+    if (!('error' in body) || typeof body.error?.message !== 'string') {
+      throw new ApiError(res.status, {
+        error: { code: 'UNKNOWN', message: res.statusText },
+      });
+    }
+    throw new ApiError(res.status, body);
+  }
+  return json as T;
+}
+
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   const body = init?.body;

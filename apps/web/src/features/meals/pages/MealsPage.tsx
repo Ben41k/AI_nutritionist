@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson } from '@/shared/services/apiClient';
+import { fetchMealsAllPagesForCalendarDay } from '@/shared/lib/fetchMealsAllPages';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
@@ -58,16 +59,6 @@ function hasReadableMacros(raw: unknown): boolean {
     est.carbsG !== undefined ||
     Boolean(est.notes?.length)
   );
-}
-
-function localDayRangeQuery(dateStr: string): string {
-  const from = new Date(`${dateStr}T00:00:00`);
-  const to = new Date(`${dateStr}T23:59:59.999`);
-  const p = new URLSearchParams({
-    from: from.toISOString(),
-    to: to.toISOString(),
-  });
-  return `/meals?${p.toString()}`;
 }
 
 function MealMacrosPanel({ raw }: { raw: unknown }) {
@@ -140,7 +131,7 @@ export function MealsPage() {
 
   const { data, isLoading } = useQuery<MealsListData>({
     queryKey,
-    queryFn: () => apiJson<MealsListData>(localDayRangeQuery(date)),
+    queryFn: () => fetchMealsAllPagesForCalendarDay(date),
   });
 
   const create = useMutation({

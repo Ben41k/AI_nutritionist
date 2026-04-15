@@ -93,6 +93,24 @@ export const config = {
     const n = Number(process.env.API_RATE_LIMIT_MAX);
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : 400;
   })(),
+  /** OpenRouter chat / meal analysis (per user or IP). */
+  apiLlmRateLimitMax: (() => {
+    const n = Number(process.env.API_LLM_RATE_LIMIT_MAX);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 30;
+  })(),
+  apiLlmRateLimitWindow: process.env.API_LLM_RATE_LIMIT_WINDOW?.trim() || '1 minute',
+  /** POST /meals without model analysis (same route, higher cap when body skips LLM). */
+  apiMealsPostNonLlmMax: (() => {
+    const n = Number(process.env.API_MEALS_POST_NON_LLM_MAX);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 120;
+  })(),
+  /** Admin knowledge indexing (embeddings per user or IP). */
+  apiKnowledgeIndexRateLimitMax: (() => {
+    const n = Number(process.env.API_KNOWLEDGE_INDEX_RATE_LIMIT_MAX);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : 60;
+  })(),
+  apiKnowledgeIndexRateLimitWindow:
+    process.env.API_KNOWLEDGE_INDEX_RATE_LIMIT_WINDOW?.trim() || '1 minute',
 };
 
 if (config.embeddingDimensions !== 1536) {

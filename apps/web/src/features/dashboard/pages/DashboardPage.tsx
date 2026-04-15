@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiJson } from '@/shared/services/apiClient';
+import { fetchMealsAllPagesForCalendarDay } from '@/shared/lib/fetchMealsAllPages';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
@@ -58,16 +59,6 @@ function todayISO() {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
-}
-
-function localDayRangeQuery(dateStr: string): string {
-  const from = new Date(`${dateStr}T00:00:00`);
-  const to = new Date(`${dateStr}T23:59:59.999`);
-  const p = new URLSearchParams({
-    from: from.toISOString(),
-    to: to.toISOString(),
-  });
-  return `/meals?${p.toString()}`;
 }
 
 function sumMealCalories(meals: Meal[]): number {
@@ -175,7 +166,7 @@ export function DashboardPage() {
   const mealQueries = useQueries({
     queries: dates14.map((date) => ({
       queryKey: ['meals', date],
-      queryFn: () => apiJson<{ meals: Meal[] }>(localDayRangeQuery(date)),
+      queryFn: () => fetchMealsAllPagesForCalendarDay(date),
       enabled: Boolean(profile),
     })),
   });

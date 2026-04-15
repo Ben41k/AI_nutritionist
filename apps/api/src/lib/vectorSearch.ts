@@ -1,5 +1,8 @@
 import type { PrismaClient } from '@prisma/client';
 
+/** Raw SQL executor (works with `prisma` and interactive `$transaction` client). */
+export type PrismaSqlClient = Pick<PrismaClient, '$executeRawUnsafe'>;
+
 export type RetrievedChunk = {
   id: string;
   documentId: string;
@@ -90,7 +93,7 @@ export async function setChatMessageEmbedding(
 }
 
 export async function insertChunkWithEmbedding(
-  prisma: PrismaClient,
+  prisma: PrismaSqlClient,
   params: {
     id: string;
     documentId: string;
@@ -110,5 +113,22 @@ export async function insertChunkWithEmbedding(
     params.chunkIndex,
     params.content,
     vec,
+  );
+}
+
+export async function updateKnowledgeChunkEmbedding(
+  prisma: PrismaSqlClient,
+  chunkId: string,
+  embedding: number[],
+): Promise<void> {
+  const vec = toVectorLiteral(embedding);
+  await prisma.$executeRawUnsafe(
+    `
+    UPDATE "KnowledgeChunk"
+    SET embedding = $1::vector
+    WHERE id = $2
+    `,
+    vec,
+    chunkId,
   );
 }

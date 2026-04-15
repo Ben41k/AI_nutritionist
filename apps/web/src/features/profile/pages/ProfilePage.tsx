@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiJson } from '@/shared/services/apiClient';
+import { useNavigate } from 'react-router-dom';
+import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
@@ -306,6 +307,68 @@ function ProfileForm({ profile }: { profile: Profile }) {
   );
 }
 
+function DeleteAccountSection() {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [password, setPassword] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+
+  const del = useMutation({
+    mutationFn: () =>
+      apiJson<{ ok: boolean }>('/auth/delete-account', {
+        method: 'POST',
+        body: JSON.stringify({ password }),
+      }),
+    onSuccess: async () => {
+      setErr(null);
+      qc.clear();
+      navigate('/login', { replace: true });
+    },
+    onError: (e) => {
+      setErr(e instanceof ApiError ? e.message : 'Не удалось удалить аккаунт');
+    },
+  });
+
+  return (
+    <Card>
+      <h2 className="mb-2 text-lg font-semibold text-ink-heading">Удаление аккаунта</h2>
+      <p className="mb-4 text-sm text-ink-muted">
+        Безвозвратно удаляются профиль, дневник питания, чаты, вес, вода и другие данные. Войти с этим
+        email будет нельзя.
+      </p>
+      <label className="mb-3 block text-xs font-semibold text-ink-muted">
+        Текущий пароль для подтверждения
+        <Input
+          type="password"
+          className="mt-1 rounded-md"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+      </label>
+      {err ? <p className="mb-3 text-sm text-red-600">{err}</p> : null}
+      <Button
+        type="button"
+        variant="ghost"
+        className="border border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
+        disabled={del.isPending || !password}
+        onClick={() => {
+          if (
+            !window.confirm(
+              'Удалить аккаунт и все данные безвозвратно? Это действие нельзя отменить.',
+            )
+          ) {
+            return;
+          }
+          del.mutate();
+        }}
+      >
+        {del.isPending ? 'Удаление…' : 'Удалить аккаунт'}
+      </Button>
+    </Card>
+  );
+}
+
 export function ProfilePage() {
   const { data, isLoading } = useQuery({
     queryKey: ['profile'],
@@ -319,6 +382,7 @@ export function ProfilePage() {
     <div className="mx-auto max-w-2xl space-y-6">
       <DisclaimerBanner />
       <ProfileForm key={data.profile.updatedAt} profile={data.profile} />
+      <DeleteAccountSection />
     </div>
   );
 }

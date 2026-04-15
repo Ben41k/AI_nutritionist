@@ -8,6 +8,10 @@ import { config } from '../config.js';
 import { Role } from '@prisma/client';
 import { getBearerUser } from '../auth/context.js';
 
+const deleteAccountBody = z.object({
+  password: z.string().min(1).max(128),
+});
+
 const registerBody = z.object({
   email: z.string().email(),
   password: z.string().min(8).max(128),
@@ -76,6 +80,27 @@ export async function registerAuthRoutes(app: FastifyInstance): Promise<void> {
   });
 
   app.post('/auth/logout', async (_req, reply) => {
+    reply.clearCookie(authCookie.name, { path: '/' });
+    await reply.send({ ok: true });
+  });
+
+  app.post('/auth/delete-account', async (req, reply) => {
+    const u = getBearerUser(req);
+    if (!u) {
+      sendError(reply, 401, 'UNAUTHORIZED', 'Authentication required');
+      return;
+    }
+    const parsed = deleteAccountBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid body', parsed.error.flatten());
+      return;
+    }
+    const user = await prisma.user.findUnique({ where: { id: u.sub } });
+    if (!user || !(await verifyPassword(parsed.data.password, user.passwordHash))) {
+      sendError(reply, 401, 'INVALID_CREDENTIALS', 'Invalid password');
+      return;
+    }
+    await prisma.user.delete({ where: { id: u.sub } });
     reply.clearCookie(authCookie.name, { path: '/' });
     await reply.send({ ok: true });
   });

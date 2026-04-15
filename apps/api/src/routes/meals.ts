@@ -2,8 +2,11 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PortionEstimate } from '@prisma/client';
 import { prisma } from '../prisma.js';
+import { config } from '../config.js';
 import { sendError } from '../lib/errors.js';
 import { getBearerUser } from '../auth/context.js';
+import { openRouterRateLimitKey } from '../lib/rateLimitKeys.js';
+import { clampLimit, decodeCursor, encodeCursor } from '../lib/cursorPagination.js';
 import { createChatCompletion } from '../lib/openrouter.js';
 
 const mealCreate = z.object({
@@ -30,6 +33,8 @@ const mealsListQuery = z
     date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     from: z.string().datetime().optional(),
     to: z.string().datetime().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    cursor: z.string().optional(),
   })
   .refine((q) => (q.from != null && q.to != null) || q.date != null, {
     message: 'Provide ?date=YYYY-MM-DD or both ?from=&to= as ISO-8601 datetimes',
@@ -83,14 +88,65 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
       sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid meals list query');
       return;
     }
+    const limit = clampLimit(parsed.data.limit);
+    const rawCursor = parsed.data.cursor?.trim();
+    const cur = rawCursor ? decodeCursor(rawCursor) : null;
+    if (rawCursor && cur == null) {
+      sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid cursor');
+      return;
+    }
+    const take = limit + 1;
+    const cursorWhere =
+      cur != null
+        ? {
+            OR: [
+              { occurredAt: { gt: new Date(cur.t) } },
+              { AND: [{ occurredAt: new Date(cur.t) }, { id: { gt: cur.id } }] },
+            ],
+          }
+        : {};
+
     const meals = await prisma.mealEntry.findMany({
-      where: { userId: u.sub, occurredAt: { gte: start, lte: end } },
-      orderBy: { occurredAt: 'asc' },
+      where: {
+        userId: u.sub,
+        occurredAt: { gte: start, lte: end },
+        ...cursorWhere,
+      },
+      orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
+      take,
     });
-    await reply.send({ meals });
+
+    const hasMore = meals.length > limit;
+    const page = hasMore ? meals.slice(0, limit) : meals;
+    const last = page[page.length - 1];
+    const nextCursor =
+      hasMore && last
+        ? encodeCursor({ t: last.occurredAt.toISOString(), id: last.id })
+        : undefined;
+
+    await reply.send({ meals: page, hasMore, nextCursor });
   });
 
-  app.post('/meals', async (req, reply) => {
+  app.post(
+    '/meals',
+    {
+      config: {
+        rateLimit: {
+          max: async (req) => {
+            const parsed = mealCreate.safeParse(req.body);
+            if (!parsed.success) return Math.max(config.apiMealsPostNonLlmMax, config.apiLlmRateLimitMax);
+            return parsed.data.analyzeWithModel
+              ? config.apiLlmRateLimitMax
+              : config.apiMealsPostNonLlmMax;
+          },
+          timeWindow: config.apiLlmRateLimitWindow,
+          hook: 'preHandler',
+          keyGenerator: openRouterRateLimitKey,
+          groupId: 'openrouter-llm',
+        },
+      },
+    },
+    async (req, reply) => {
     const u = getBearerUser(req);
     if (!u) {
       sendError(reply, 401, 'UNAUTHORIZED', 'Authentication required');

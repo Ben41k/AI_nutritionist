@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import { randomUUID } from 'node:crypto';
 import { config } from './config.js';
@@ -34,10 +35,22 @@ async function main(): Promise<void> {
     credentials: true,
   });
 
+  await app.register(multipart, {
+    limits: { fileSize: 5 * 1024 * 1024 },
+  });
+
   await app.register(rateLimit, {
     global: true,
     max: config.apiRateLimitMax,
     timeWindow: '1 minute',
+    errorResponseBuilder: (_req, context) =>
+      new HttpError(
+        context.ban ? 403 : 429,
+        context.ban ? 'FORBIDDEN' : 'RATE_LIMITED',
+        context.ban
+          ? 'Rate limit ban threshold reached'
+          : `Rate limit exceeded; retry in ${context.after}`,
+      ),
   });
 
   app.setErrorHandler((err, req, reply) => {
