@@ -8,6 +8,9 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "lint": "eslint .",
+    "verify:embedding": "tsx scripts/verify-embedding-write.ts",
+    "verify:embedding:pipeline": "tsx scripts/verify-embedding-pipeline.ts",
+    "verify:embedding:cosine": "tsx scripts/verify-embedding-cosine-similarity.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy"

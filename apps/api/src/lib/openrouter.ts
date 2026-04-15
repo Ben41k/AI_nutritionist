@@ -57,7 +57,12 @@ function throwOpenRouterHttpError(status: number, bodyText: string): never {
     httpStatus,
     openRouterErrorCode(status),
     message,
-    config.isProd ? undefined : { openRouterStatus: status },
+    config.isProd
+      ? undefined
+      : {
+          openRouterStatus: status,
+          openRouterBodySnippet: bodyText.slice(0, 1200),
+        },
   );
 }
 
@@ -66,9 +71,23 @@ type ChatCompletionMessage = {
   content: string;
 };
 
-/** Google Gemma on OpenRouter often returns 400 if a `system` message is sent (provider rejects it). */
-function modelRejectsSystemRole(modelId: string): boolean {
-  return modelId.toLowerCase().includes('gemma');
+/**
+ * Google Gemma/Gemini (and similar) on OpenRouter often return 400 if:
+ * - a separate `system` message is sent (upstream expects instructions differently), or
+ * - `temperature` is set (some routes reject non-default sampling).
+ */
+function modelNeedsGoogleNativeChatWorkarounds(modelId: string): boolean {
+  const m = modelId.toLowerCase();
+  return m.includes('gemma') || m.includes('gemini');
+}
+
+function sanitizeChatMessages(messages: ChatCompletionMessage[]): ChatCompletionMessage[] {
+  return messages
+    .map((m) => ({
+      ...m,
+      content: typeof m.content === 'string' ? m.content.trim() : '',
+    }))
+    .filter((m) => m.content.length > 0);
 }
 
 /** Fold `system` turns into the first `user` message so providers that disallow `system` still see instructions. */
@@ -76,7 +95,7 @@ function normalizeMessagesForModel(
   messages: ChatCompletionMessage[],
   modelId: string,
 ): ChatCompletionMessage[] {
-  if (!modelRejectsSystemRole(modelId)) {
+  if (!modelNeedsGoogleNativeChatWorkarounds(modelId)) {
     return messages;
   }
   const systemText = messages
@@ -99,18 +118,17 @@ function normalizeMessagesForModel(
   return [{ role: 'user', content: systemText }, ...rest];
 }
 
-export async function createChatCompletion(params: {
-  messages: ChatCompletionMessage[];
-  temperature?: number;
-}): Promise<string> {
-  const modelId = config.openRouterChatModel;
-  const messages = normalizeMessagesForModel(params.messages, modelId);
+async function createChatCompletionForModel(
+  modelId: string,
+  params: { messages: ChatCompletionMessage[]; temperature?: number },
+): Promise<string> {
+  const messages = normalizeMessagesForModel(sanitizeChatMessages(params.messages), modelId);
 
   const payload: Record<string, unknown> = {
     model: modelId,
     messages,
   };
-  if (!modelRejectsSystemRole(modelId)) {
+  if (!modelNeedsGoogleNativeChatWorkarounds(modelId)) {
     payload.temperature = params.temperature ?? 0.4;
   }
 
@@ -133,6 +151,31 @@ export async function createChatCompletion(params: {
     throw new HttpError(502, 'OPENROUTER_ERROR', 'OpenRouter: empty completion');
   }
   return content;
+}
+
+/**
+ * Chat completions: try `OPENROUTER_CHAT_MODEL`, then models from
+ * `OPENROUTER_CHAT_FALLBACK_MODELS` or built-in defaults (free Gemma / Llama / Hermes on OpenRouter).
+ * 401 stops the chain (invalid API key). Per-model message normalization applies (e.g. Gemma).
+ */
+export async function createChatCompletion(params: {
+  messages: ChatCompletionMessage[];
+  temperature?: number;
+}): Promise<string> {
+  let lastError: unknown;
+  for (const modelId of config.openRouterChatModelChain) {
+    try {
+      return await createChatCompletionForModel(modelId, params);
+    } catch (e) {
+      lastError = e;
+      if (e instanceof HttpError && e.status === 401) {
+        throw e;
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new HttpError(502, 'OPENROUTER_ERROR', 'All OpenRouter chat models failed');
 }
 
 function parseEmbeddingResponse(data: unknown): number[] {
@@ -200,13 +243,17 @@ async function createEmbeddingViaGemini(input: string): Promise<number[]> {
   return parseGeminiEmbeddingResponse(await res.json());
 }
 
-async function createEmbeddingViaOpenRouter(input: string): Promise<number[]> {
+async function createEmbeddingViaOpenRouterModel(
+  input: string,
+  model: string,
+): Promise<number[]> {
   const res = await fetch(`${BASE}/embeddings`, {
     method: 'POST',
     headers: openRouterHeaders(),
     body: JSON.stringify({
-      model: config.openRouterEmbeddingModel,
+      model,
       input,
+      dimensions: config.embeddingDimensions,
     }),
   });
 
@@ -215,6 +262,26 @@ async function createEmbeddingViaOpenRouter(input: string): Promise<number[]> {
     throwOpenRouterHttpError(res.status, text);
   }
   return parseEmbeddingResponse(await res.json());
+}
+
+async function createEmbeddingViaOpenRouterChainWithModel(
+  input: string,
+): Promise<{ embedding: number[]; model: string }> {
+  let lastError: unknown;
+  for (const model of config.openRouterEmbeddingModelChain) {
+    try {
+      const embedding = await createEmbeddingViaOpenRouterModel(input, model);
+      return { embedding, model };
+    } catch (e) {
+      lastError = e;
+      if (e instanceof HttpError && e.status === 401) {
+        throw e;
+      }
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new HttpError(502, 'EMBEDDING_ERROR', 'All OpenRouter embedding models failed');
 }
 
 function shouldRetryEmbeddingWithGemini(err: unknown): boolean {
@@ -229,16 +296,32 @@ function shouldRetryEmbeddingWithGemini(err: unknown): boolean {
 }
 
 /**
- * Embeddings via OpenRouter (`OPENROUTER_EMBEDDING_MODEL`).
- * If `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) is set and OpenRouter rejects the request (e.g. provider TOS), retries on Gemini `embedContent`.
+ * Same routing as {@link createEmbedding}, but returns which backend produced the vector
+ * (`openrouter:<slug>` or `gemini:<model>`) for diagnostics and smoke tests.
  */
-export async function createEmbedding(input: string): Promise<number[]> {
+export async function createEmbeddingWithSource(
+  input: string,
+): Promise<{ embedding: number[]; source: string }> {
   try {
-    return await createEmbeddingViaOpenRouter(input);
+    const { embedding, model } = await createEmbeddingViaOpenRouterChainWithModel(input);
+    return { embedding, source: `openrouter:${model}` };
   } catch (e) {
     if (shouldRetryEmbeddingWithGemini(e)) {
-      return createEmbeddingViaGemini(input);
+      const embedding = await createEmbeddingViaGemini(input);
+      return { embedding, source: `gemini:${config.geminiEmbeddingModel}` };
     }
     throw e;
   }
+}
+
+/**
+ * Embeddings: try OpenRouter models in order (`OPENROUTER_EMBEDDING_MODEL`, then
+ * `OPENROUTER_EMBEDDING_FALLBACK_MODELS` or built-in defaults). Each request sets
+ * `dimensions` to `EMBEDDING_DIMENSIONS` (1536) for schema compatibility.
+ * If every OpenRouter attempt fails and `GEMINI_API_KEY` / `GOOGLE_API_KEY` is set,
+ * and the last failure matches provider/TOS heuristics, falls back to Gemini `embedContent`.
+ */
+export async function createEmbedding(input: string): Promise<number[]> {
+  const { embedding } = await createEmbeddingWithSource(input);
+  return embedding;
 }

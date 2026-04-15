@@ -160,10 +160,12 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
 
     const completionMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       { role: 'system', content: system },
-      ...history.map((m) => ({
-        role: m.role === ChatRole.USER ? ('user' as const) : ('assistant' as const),
-        content: m.content,
-      })),
+      ...history
+        .filter((m) => m.role === ChatRole.USER || m.role === ChatRole.ASSISTANT)
+        .map((m) => ({
+          role: m.role === ChatRole.USER ? ('user' as const) : ('assistant' as const),
+          content: m.content,
+        })),
     ];
 
     const assistantText = await createChatCompletion({
