@@ -63,11 +63,14 @@ export function HeaderAccountMenu({
         aria-label="Меню аккаунта"
         onClick={() => setOpen((v) => !v)}
         className={clsx(
-          'grid h-11 w-11 place-items-center rounded-full text-ink-muted transition hover:bg-primary-soft hover:text-primary',
-          (open || profileActive) && 'bg-primary text-white hover:bg-primary hover:text-white',
+          'grid h-14 w-14 place-items-center rounded-full border border-border bg-surface text-ink-heading shadow-sm transition',
+          'hover:border-primary/45 hover:bg-primary-soft hover:text-primary',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-page',
+          (open || profileActive) &&
+            'border-transparent bg-primary text-white shadow-[0_4px_14px_rgba(90,103,216,0.35)] hover:border-transparent hover:bg-primary hover:text-white',
         )}
       >
-        <UserMenuIcon className="h-5 w-5" />
+        <UserMenuIcon className="h-8 w-8" />
       </button>
 
       {open ? (
