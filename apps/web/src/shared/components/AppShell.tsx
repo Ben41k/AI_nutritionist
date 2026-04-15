@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 const nav = [
   { to: '/', label: 'Метрики', icon: 'chart' },
   { to: '/meals', label: 'Дневник', icon: 'meal' },
+  { to: '/ration', label: 'Рацион', icon: 'ration' },
   { to: '/chat', label: 'Чат', icon: 'chat' },
 ] as const;
 
@@ -28,6 +29,21 @@ function Icon({ name }: { name: NavIcon }) {
         <path d="M6 17h8" />
         <path d="M10 9V3" />
         <path d="M6 3v10a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V3" />
+      </svg>
+    );
+  if (name === 'ration')
+    return (
+      <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4" />
+        <path d="M8 2v4" />
+        <path d="M3 10h18" />
+        <path d="M8 14h.01" />
+        <path d="M12 14h.01" />
+        <path d="M16 14h.01" />
+        <path d="M8 18h.01" />
+        <path d="M12 18h.01" />
+        <path d="M16 18h.01" />
       </svg>
     );
   return (

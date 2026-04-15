@@ -36,6 +36,14 @@ export const router = createBrowserRouter([
         handle: { title: 'Дневник питания', subtitle: 'Приёмы пищи' },
       },
       {
+        path: 'ration',
+        lazy: async () => {
+          const { RationPage } = await import('@/features/ration/pages/RationPage');
+          return { Component: RationPage };
+        },
+        handle: { title: 'Рацион', subtitle: 'Примерный план на месяц' },
+      },
+      {
         path: 'chat',
         lazy: async () => {
           const { ChatListPage } = await import('@/features/chat/pages/ChatListPage');

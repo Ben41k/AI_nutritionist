@@ -204,6 +204,11 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
           activityLevel: profile.activityLevel,
           allergies: profile.allergies,
           preferences: profile.preferences,
+          targetWeightKg: profile.targetWeightKg,
+          startWeightKg: profile.startWeightKg,
+          waterGoalMl: profile.waterGoalMl,
+          createdAt: profile.createdAt,
+          updatedAt: profile.updatedAt,
         })
       : '{}';
 

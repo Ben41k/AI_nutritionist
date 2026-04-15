@@ -12,6 +12,7 @@ import { registerProfileRoutes } from './routes/profile.js';
 import { registerMealRoutes } from './routes/meals.js';
 import { registerTrackingRoutes } from './routes/tracking.js';
 import { registerChatRoutes } from './routes/chat.js';
+import { registerMealRationRoutes } from './routes/mealRation.js';
 import { registerAdminKnowledgeRoutes } from './routes/adminKnowledge.js';
 
 async function main(): Promise<void> {
@@ -77,6 +78,7 @@ async function main(): Promise<void> {
   await registerTrackingRoutes(app);
 
   await registerChatRoutes(app);
+  await registerMealRationRoutes(app);
 
   await registerAdminKnowledgeRoutes(app);
 
