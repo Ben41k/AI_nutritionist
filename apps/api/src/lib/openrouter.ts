@@ -42,10 +42,19 @@ function parseOpenRouterMessage(bodyText: string): string {
   return trimmed.length > 0 ? trimmed.slice(0, 2000) : 'OpenRouter request failed';
 }
 
-/** Forward only statuses that map cleanly to our API client; others become 502. */
+/**
+ * Map upstream LLM/embedding HTTP status for our JSON API.
+ * Providers often return **403** (region, provider policy, free-tier limits). That is not our
+ * app's RBAC «Forbidden» and misleads clients; we return **502** instead while keeping the
+ * semantic `code` from {@link openRouterErrorCode} (e.g. `OPENROUTER_FORBIDDEN`) and
+ * `details.openRouterStatus` in dev.
+ */
 function mapUpstreamHttpStatus(status: number): number {
-  if (status === 401 || status === 403 || status === 429 || status === 400) {
+  if (status === 401 || status === 429 || status === 400) {
     return status;
+  }
+  if (status === 403) {
+    return 502;
   }
   return 502;
 }

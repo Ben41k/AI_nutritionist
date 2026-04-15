@@ -31,15 +31,21 @@ export function ChatThreadPage() {
 
   const send = useMutation({
     mutationFn: async () => {
-      const res = await apiJson<{ message: { content: string }; retrievalUsed: boolean }>(
-        `/chat/threads/${threadId}/messages`,
-        { method: 'POST', body: JSON.stringify({ content: text }) },
-      );
-      setLastMeta(
-        res.retrievalUsed
-          ? 'Использованы выдержки из базы знаний'
-          : 'Без retrieval (пустая база или ошибка эмбеддинга)',
-      );
+      const res = await apiJson<{
+        message: { content: string };
+        retrievalUsed: boolean;
+        dialogMemoryUsed: boolean;
+      }>(`/chat/threads/${threadId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ content: text }),
+      });
+      const kb = res.retrievalUsed
+        ? 'База знаний: подмешаны выдержки'
+        : 'База знаний: без релевантных фрагментов';
+      const mem = res.dialogMemoryUsed
+        ? 'Память диалога: подмешаны похожие прошлые реплики'
+        : 'Память диалога: нет (мало сообщений с эмбеддингами или первые реплики)';
+      setLastMeta(`${kb} · ${mem}`);
       return res;
     },
     onSuccess: () => {

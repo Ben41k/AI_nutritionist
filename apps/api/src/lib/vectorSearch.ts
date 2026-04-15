@@ -6,6 +6,12 @@ export type RetrievedChunk = {
   content: string;
 };
 
+export type RetrievedThreadMessage = {
+  id: string;
+  role: string;
+  content: string;
+};
+
 function toVectorLiteral(embedding: number[]): string {
   return `[${embedding.map((n) => Number(n).toFixed(8)).join(',')}]`;
 }
@@ -29,6 +35,39 @@ export async function searchSimilarChunks(
     `,
     vec,
     limit,
+  );
+  return rows;
+}
+
+/**
+ * Semantically similar prior turns in the same thread (requires `ChatMessage.embedding`).
+ * Excludes the current message so the fresh user turn does not rank as the only perfect match.
+ */
+export async function searchSimilarThreadMessages(
+  prisma: PrismaClient,
+  params: {
+    threadId: string;
+    excludeMessageId: string;
+    embedding: number[];
+    limit: number;
+  },
+): Promise<RetrievedThreadMessage[]> {
+  const vec = toVectorLiteral(params.embedding);
+  const rows = await prisma.$queryRawUnsafe<RetrievedThreadMessage[]>(
+    `
+    SELECT m.id, m.role::text AS role, m.content
+    FROM "ChatMessage" m
+    WHERE m."threadId" = $1
+      AND m.embedding IS NOT NULL
+      AND m.id <> $2
+      AND m.role IN ('USER', 'ASSISTANT')
+    ORDER BY m.embedding <=> $3::vector
+    LIMIT $4
+    `,
+    params.threadId,
+    params.excludeMessageId,
+    vec,
+    params.limit,
   );
   return rows;
 }

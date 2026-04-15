@@ -5,7 +5,12 @@ import { prisma } from '../prisma.js';
 import { sendError } from '../lib/errors.js';
 import { getBearerUser } from '../auth/context.js';
 import { createChatCompletion, createEmbedding } from '../lib/openrouter.js';
-import { searchSimilarChunks, setChatMessageEmbedding } from '../lib/vectorSearch.js';
+import {
+  searchSimilarChunks,
+  searchSimilarThreadMessages,
+  setChatMessageEmbedding,
+} from '../lib/vectorSearch.js';
+import type { RetrievedThreadMessage } from '../lib/vectorSearch.js';
 
 const createThreadBody = z.object({
   title: z.string().max(200).optional(),
@@ -15,8 +20,25 @@ const postMessageBody = z.object({
   content: z.string().min(1).max(8000),
 });
 
-function buildSystemPrompt(params: { profileSummary: string; knowledgeContext: string }): string {
+function formatDialogMemoryForPrompt(rows: RetrievedThreadMessage[]): string {
+  if (rows.length === 0) return '';
+  const maxLen = 600;
+  return rows
+    .map((r) => {
+      const tag = r.role === 'USER' ? 'USER' : 'ASSISTANT';
+      const body = r.content.length > maxLen ? `${r.content.slice(0, maxLen)}…` : r.content;
+      return `[${tag}]\n${body}`;
+    })
+    .join('\n---\n');
+}
+
+function buildSystemPrompt(params: {
+  profileSummary: string;
+  knowledgeContext: string;
+  dialogMemoryContext: string;
+}): string {
   const kb = params.knowledgeContext.trim();
+  const mem = params.dialogMemoryContext.trim();
   return [
     'You are an AI nutrition assistant (not a medical professional).',
     'Speak in Russian.',
@@ -25,9 +47,13 @@ function buildSystemPrompt(params: { profileSummary: string; knowledgeContext: s
     'If the user describes acute or alarming symptoms, tell them to seek urgent in-person medical care.',
     'Prefer practical meal planning and general wellness guidance.',
     'When "Knowledge base excerpts" are provided, ground answers in them when relevant; if they are empty, answer from general nutrition principles.',
+    'When "Earlier related turns from this thread" lists past lines, they are semantically similar to the current question; use them to stay consistent with facts the user stated earlier (names, goals, constraints). Do not contradict the explicit chat history you see in the messages list.',
     '',
     'Knowledge base excerpts:',
     kb || '(none retrieved)',
+    '',
+    'Earlier related turns from this thread (vector recall):',
+    mem || '(none — first messages in thread or embeddings not available yet)',
     '',
     'User profile (may be incomplete):',
     params.profileSummary,
@@ -129,6 +155,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       : '{}';
 
     let knowledgeContext = '';
+    let dialogMemoryContext = '';
     let queryEmbedding: number[] | null = null;
     try {
       queryEmbedding = await createEmbedding(content);
@@ -147,6 +174,17 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       } catch {
         /* continue without retrieval */
       }
+      try {
+        const remembered = await searchSimilarThreadMessages(prisma, {
+          threadId,
+          excludeMessageId: userMessage.id,
+          embedding: queryEmbedding,
+          limit: 8,
+        });
+        dialogMemoryContext = formatDialogMemoryForPrompt(remembered);
+      } catch {
+        /* continue without dialog vector memory */
+      }
     }
 
     const history = await prisma.chatMessage.findMany({
@@ -156,7 +194,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
     });
     history.reverse();
 
-    const system = buildSystemPrompt({ profileSummary, knowledgeContext });
+    const system = buildSystemPrompt({ profileSummary, knowledgeContext, dialogMemoryContext });
 
     const completionMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       { role: 'system', content: system },
@@ -192,6 +230,7 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
     await reply.send({
       message: { role: 'ASSISTANT', content: assistantText },
       retrievalUsed: knowledgeContext.length > 0,
+      dialogMemoryUsed: dialogMemoryContext.length > 0,
     });
   });
 
