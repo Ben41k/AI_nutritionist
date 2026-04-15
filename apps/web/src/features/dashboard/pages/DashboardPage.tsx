@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { apiJson } from '@/shared/services/apiClient';
@@ -98,24 +98,166 @@ function waterRangeQuery(from: string, to: string): string {
 
 const METRIC_EMPTY = 'не задано';
 
+function formatDayLabel(iso: string): string {
+  const tail = iso.slice(5);
+  return tail.startsWith('0') ? tail.slice(1) : tail;
+}
+
+/** 14 суток: баланс цель − факт (ккал) для мини-графика */
+function BalanceSparkline({
+  days,
+  targetKcal,
+}: {
+  days: { date: string; kcal: number }[];
+  targetKcal: number;
+}) {
+  const balances = days.map((d) => (d.kcal > 0 ? targetKcal - d.kcal : null));
+  const magnitudes = balances.map((b) => (b != null ? Math.abs(b) : 0));
+  const maxAbs = Math.max(220, ...magnitudes, 1);
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">
+        Баланс по дням (ккал)
+      </p>
+      <div className="flex h-16 gap-px sm:gap-0.5" role="img" aria-label="Столбцы баланса за 14 дней">
+        {balances.map((bal, i) => {
+          const d = days[i];
+          const has = bal != null;
+          const hPct = has ? Math.max(10, (Math.abs(bal) / maxAbs) * 100) : 8;
+          const pos = has && bal >= 0;
+          const title = has
+            ? `${formatDayLabel(d.date)}: ${bal > 0 ? '+' : ''}${Math.round(bal)} ккал к цели`
+            : `${formatDayLabel(d.date)}: нет данных`;
+          return (
+            <div
+              key={d.date}
+              title={title}
+              className="group/bar flex min-h-0 min-w-0 flex-1 flex-col justify-end"
+            >
+              <div
+                className={`w-full rounded-t transition-[filter] duration-150 group-hover/bar:brightness-110 ${
+                  !has
+                    ? 'bg-ink-muted/30'
+                    : pos
+                      ? 'bg-emerald-500/75 dark:bg-emerald-400/80'
+                      : 'bg-amber-500/75 dark:bg-amber-400/80'
+                }`}
+                style={{ height: `${hPct}%`, minHeight: has ? 3 : 2 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">
+        Зелёный столбик — ниже целевой нормы по ккал, янтарный — выше. Серый — день без записей в дневнике.
+      </p>
+    </div>
+  );
+}
+
+function AdherenceSparkline({
+  days,
+  tdee,
+  goal,
+}: {
+  days: { date: string; kcal: number }[];
+  tdee: number;
+  goal: NutritionGoal;
+}) {
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">
+        Приверженность по дням
+      </p>
+      <div className="flex h-3 gap-px sm:gap-0.5" role="img" aria-label="Полоса дней с данными о калориях">
+        {days.map((d) => {
+          const ok = d.kcal > 0 && isDayAdherent(d.kcal, tdee, goal);
+          const title =
+            d.kcal <= 0
+              ? `${formatDayLabel(d.date)}: нет ккал`
+              : `${formatDayLabel(d.date)}: ${ok ? 'в допуске' : 'вне допуска'}`;
+          return (
+            <div
+              key={d.date}
+              title={title}
+              className={`min-w-0 flex-1 rounded-sm transition-transform hover:z-10 hover:scale-y-125 ${
+                d.kcal <= 0 ? 'bg-ink-muted/20' : ok ? 'bg-emerald-500/80' : 'bg-rose-500/75'
+              }`}
+            />
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">
+        Сегменты слева направо — от старого к новому дню. Наведите на полоску для подсказки.
+      </p>
+    </div>
+  );
+}
+
+function WaterWeekSparkline({
+  dates,
+  dayTotals,
+  goalMl,
+}: {
+  dates: string[];
+  dayTotals: number[];
+  goalMl: number;
+}) {
+  const maxH = Math.max(goalMl, ...dayTotals, 1);
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">
+        Вода за 7 дней, мл
+      </p>
+      <div className="flex h-16 gap-1 sm:gap-1.5" role="img" aria-label="Столбцы воды за неделю">
+        {dates.map((date, i) => {
+          const ml = dayTotals[i] ?? 0;
+          const hPct = Math.max(12, (ml / maxH) * 100);
+          const met = goalMl > 0 && ml >= goalMl;
+          return (
+            <div
+              key={date}
+              title={`${formatDayLabel(date)}: ${ml} мл${met ? ' · норма достигнута' : ''}`}
+              className="group/w flex min-h-0 min-w-0 flex-1 flex-col justify-end"
+            >
+              <div
+                className={`w-full rounded-t ${
+                  met ? 'bg-sky-500/80 dark:bg-sky-400/85' : 'bg-primary/55 dark:bg-primary/50'
+                } transition-[filter] duration-150 group-hover/w:brightness-110`}
+                style={{ height: `${hPct}%`, minHeight: 4 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">
+        Высота столбца — доля от максимума среди недели и вашей нормы. Наведите на столбец для точного значения.
+      </p>
+    </div>
+  );
+}
+
 function Metric({
   title,
   value,
   description,
+  detail,
 }: {
   title: string;
   value: string;
   description: string;
+  detail?: ReactNode;
 }) {
   return (
     <div
-      className="group relative z-0 rounded-2xl border border-border/35 bg-surface/35 px-4 py-3.5 shadow-sm shadow-black/[0.03] ring-1 ring-black/[0.02] transition-[box-shadow,border-color,background-color,z-index] duration-200 hover:z-20 hover:border-border/50 hover:bg-surface/55 hover:shadow-md hover:shadow-black/[0.04] focus-within:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 active:z-20 dark:ring-white/[0.04]"
+      className="group relative z-0 rounded-2xl border border-border/35 bg-surface/35 px-4 py-3.5 shadow-sm shadow-black/[0.03] ring-1 ring-black/[0.02] transition-[box-shadow,border-color,background-color,z-index] duration-200 hover:z-20 hover:border-border/50 hover:bg-surface/55 hover:shadow-md hover:shadow-black/[0.04] focus-within:z-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 dark:ring-white/[0.04]"
       tabIndex={0}
       role="group"
       aria-label={title}
     >
       <div className="text-[11px] font-medium uppercase tracking-wide text-ink-muted/80">{title}</div>
       <div className="mt-1.5 text-lg font-semibold tracking-tight text-ink-heading">{value}</div>
+      {detail != null ? <div className="relative z-10">{detail}</div> : null}
       <p
         className="pointer-events-none invisible absolute left-0 right-0 top-full z-30 mt-1.5 rounded-xl border border-border/40 bg-surface/95 px-3 py-2 text-[11px] leading-relaxed text-ink-muted/90 opacity-0 shadow-lg shadow-black/10 backdrop-blur-sm transition-[opacity,visibility] duration-200 group-hover:pointer-events-auto group-hover:visible group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:visible group-focus-within:opacity-100 group-active:pointer-events-auto group-active:visible group-active:opacity-100"
       >
@@ -125,7 +267,7 @@ function Metric({
   );
 }
 
-function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
+function Section({ heading, children }: { heading: string; children: ReactNode }) {
   return (
     <section className="space-y-4 pb-2">
       <h2 className="text-base font-semibold text-ink-heading">{heading}</h2>
@@ -318,6 +460,13 @@ export function DashboardPage() {
 
   const waterTodayMl = waterData?.days.find((d) => d.date === todayISO())?.totalMl ?? 0;
 
+  const dates7Key = dates7.join(',');
+  const waterWeekTotals = useMemo(() => {
+    const parts = dates7Key.split(',');
+    const byDate = new Map((waterData?.days ?? []).map((d) => [d.date, d.totalMl]));
+    return parts.map((d) => byDate.get(d) ?? 0);
+  }, [waterData?.days, dates7Key]);
+
   if (profileLoading) return <p className="text-ink-muted">Загрузка…</p>;
   if (!profile) return <p className="text-ink-muted">Профиль не найден</p>;
 
@@ -358,6 +507,10 @@ export function DashboardPage() {
   const waterGoal = profile.waterGoalMl ?? 2000;
   const waterPct =
     waterGoal > 0 ? Math.min(100, Math.round((waterTodayMl / waterGoal) * 100)) : null;
+
+  const tdeeForCharts = analytics?.tdee ?? null;
+  const targetKcalForCharts =
+    tdeeForCharts != null ? calorieTargetForAdherence(tdeeForCharts, profile.goal) : null;
 
   const weightSubmit = () => {
     const n = Number(weightInput.replace(',', '.'));
@@ -459,6 +612,9 @@ export function DashboardPage() {
               : METRIC_EMPTY
           }
           description="Выпитая вода за сутки относительно нормы из профиля."
+          detail={
+            <WaterWeekSparkline dates={dates7} dayTotals={waterWeekTotals} goalMl={waterGoal} />
+          }
         />
       </Section>
 
@@ -516,6 +672,11 @@ export function DashboardPage() {
                 : METRIC_EMPTY
             }
             description="Среднее по дням, где есть калории: целевые ккал по цели минус сумма за день."
+            detail={
+              targetKcalForCharts != null ? (
+                <BalanceSparkline days={dailyCalories} targetKcal={targetKcalForCharts} />
+              ) : null
+            }
           />
           <Metric
             title="Индекс приверженности"
@@ -523,6 +684,11 @@ export function DashboardPage() {
               analytics?.adherence != null ? `${analytics.adherence}%` : METRIC_EMPTY
             }
             description="Процент дней с данными по ккал, когда сумма укладывается в допуск ±12% (не менее ±200 ккал) от целевой нормы."
+            detail={
+              tdeeForCharts != null ? (
+                <AdherenceSparkline days={dailyCalories} tdee={tdeeForCharts} goal={profile.goal} />
+              ) : null
+            }
           />
         </div>
       </section>
