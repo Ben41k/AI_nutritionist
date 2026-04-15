@@ -22,13 +22,6 @@ function printChain(): void {
     console.log(`| ${i + 1} | \`${m}\` (${tag}) |`);
   });
   console.log('');
-  if (config.geminiApiKey) {
-    console.log(
-      `После исчерпания OpenRouter при TOS/регионе: Gemini \`${config.geminiEmbeddingModel}\` (ключ задан).\n`,
-    );
-  } else {
-    console.log('Gemini fallback: ключ не задан (GEMINI_API_KEY / GOOGLE_API_KEY).\n');
-  }
 }
 
 async function main(): Promise<void> {

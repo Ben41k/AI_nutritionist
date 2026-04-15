@@ -84,13 +84,6 @@ export const config = {
     openRouterEmbeddingModel,
     openRouterEmbeddingFallbackModels,
   ),
-  /**
-   * Google AI (Gemini) API key for embedding fallback when OpenRouter rejects the request.
-   * Accepts `GEMINI_API_KEY` or `GOOGLE_API_KEY`.
-   */
-  geminiApiKey: process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim(),
-  /** Gemini embedding model id for REST path `models/{id}:embedContent` (default matches 1536-dim output). */
-  geminiEmbeddingModel: process.env.GEMINI_EMBEDDING_MODEL?.trim() ?? 'gemini-embedding-001',
   embeddingDimensions: Number(process.env.EMBEDDING_DIMENSIONS ?? 1536),
   bootstrapAdminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL?.toLowerCase().trim(),
   nodeEnv: process.env.NODE_ENV ?? 'development',

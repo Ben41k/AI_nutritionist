@@ -194,55 +194,6 @@ function parseEmbeddingResponse(data: unknown): number[] {
   return emb;
 }
 
-function parseGeminiEmbeddingResponse(data: unknown): number[] {
-  const j = data as { embedding?: { values?: number[] } };
-  const emb = j.embedding?.values;
-  if (!emb?.length) {
-    throw new HttpError(502, 'EMBEDDING_ERROR', 'Gemini embedContent returned empty vector');
-  }
-  if (emb.length !== config.embeddingDimensions) {
-    throw new HttpError(
-      502,
-      'EMBEDDING_ERROR',
-      `Gemini embedding length ${emb.length} does not match EMBEDDING_DIMENSIONS ${config.embeddingDimensions}`,
-    );
-  }
-  return emb;
-}
-
-/** https://ai.google.dev/gemini-api/docs/embeddings — `outputDimensionality` must match DB `vector(1536)`. */
-async function createEmbeddingViaGemini(input: string): Promise<number[]> {
-  const key = config.geminiApiKey;
-  if (!key) {
-    throw new HttpError(500, 'EMBEDDING_ERROR', 'GEMINI_API_KEY (or GOOGLE_API_KEY) is not configured');
-  }
-  const model = config.geminiEmbeddingModel.replace(/^models\//, '');
-  const url = new URL(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:embedContent`,
-  );
-  url.searchParams.set('key', key);
-
-  const res = await fetch(url.toString(), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      content: { parts: [{ text: input }] },
-      outputDimensionality: config.embeddingDimensions,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new HttpError(
-      mapUpstreamHttpStatus(res.status),
-      'GEMINI_EMBEDDING_ERROR',
-      parseOpenRouterMessage(text),
-      config.isProd ? undefined : { geminiStatus: res.status },
-    );
-  }
-  return parseGeminiEmbeddingResponse(await res.json());
-}
-
 async function createEmbeddingViaOpenRouterModel(
   input: string,
   model: string,
@@ -284,42 +235,21 @@ async function createEmbeddingViaOpenRouterChainWithModel(
     : new HttpError(502, 'EMBEDDING_ERROR', 'All OpenRouter embedding models failed');
 }
 
-function shouldRetryEmbeddingWithGemini(err: unknown): boolean {
-  if (!config.geminiApiKey) return false;
-  if (!(err instanceof HttpError)) return false;
-  if (err.status === 401) return false;
-  const msg = err.message.toLowerCase();
-  if (msg.includes('terms of service')) return true;
-  if (msg.includes('violation of provider')) return true;
-  if (msg.includes('country') && msg.includes('not supported')) return true;
-  return false;
-}
-
 /**
- * Same routing as {@link createEmbedding}, but returns which backend produced the vector
- * (`openrouter:<slug>` or `gemini:<model>`) for diagnostics and smoke tests.
+ * Same routing as {@link createEmbedding}, but returns which OpenRouter model produced the vector
+ * (`openrouter:<slug>`) for diagnostics and smoke tests.
  */
 export async function createEmbeddingWithSource(
   input: string,
 ): Promise<{ embedding: number[]; source: string }> {
-  try {
-    const { embedding, model } = await createEmbeddingViaOpenRouterChainWithModel(input);
-    return { embedding, source: `openrouter:${model}` };
-  } catch (e) {
-    if (shouldRetryEmbeddingWithGemini(e)) {
-      const embedding = await createEmbeddingViaGemini(input);
-      return { embedding, source: `gemini:${config.geminiEmbeddingModel}` };
-    }
-    throw e;
-  }
+  const { embedding, model } = await createEmbeddingViaOpenRouterChainWithModel(input);
+  return { embedding, source: `openrouter:${model}` };
 }
 
 /**
  * Embeddings: try OpenRouter models in order (`OPENROUTER_EMBEDDING_MODEL`, then
  * `OPENROUTER_EMBEDDING_FALLBACK_MODELS` or built-in defaults). Each request sets
  * `dimensions` to `EMBEDDING_DIMENSIONS` (1536) for schema compatibility.
- * If every OpenRouter attempt fails and `GEMINI_API_KEY` / `GOOGLE_API_KEY` is set,
- * and the last failure matches provider/TOS heuristics, falls back to Gemini `embedContent`.
  */
 export async function createEmbedding(input: string): Promise<number[]> {
   const { embedding } = await createEmbeddingWithSource(input);
