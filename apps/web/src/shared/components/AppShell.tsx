@@ -6,10 +6,11 @@ const nav = [
   { to: '/', label: 'Метрики', icon: 'chart' },
   { to: '/meals', label: 'Дневник', icon: 'meal' },
   { to: '/chat', label: 'Чат', icon: 'chat' },
-  { to: '/profile', label: 'Профиль', icon: 'user' },
 ] as const;
 
-function Icon({ name }: { name: (typeof nav)[number]['icon'] }) {
+type NavIcon = (typeof nav)[number]['icon'];
+
+function Icon({ name }: { name: NavIcon }) {
   const common = 'h-5 w-5';
   if (name === 'chart')
     return (
@@ -29,16 +30,9 @@ function Icon({ name }: { name: (typeof nav)[number]['icon'] }) {
         <path d="M6 3v10a4 4 0 0 0 4 4h4a4 4 0 0 0 4-4V3" />
       </svg>
     );
-  if (name === 'chat')
-    return (
-      <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-      </svg>
-    );
   return (
     <svg className={common} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }

@@ -3,7 +3,7 @@ import { Navigate, useMatches } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { AppShell } from '@/shared/components/AppShell';
-import { Button } from '@/shared/components/Button';
+import { HeaderAccountMenu } from '@/shared/components/HeaderAccountMenu';
 import { ApiError, apiJson } from '@/shared/services/apiClient';
 
 type Handle = { title?: string; subtitle?: string };
@@ -57,20 +57,13 @@ export function ProtectedLayout() {
       subtitle={handle.subtitle}
       isAdmin={user.role === 'ADMIN'}
       actions={
-        <div className="flex max-w-md flex-col items-end gap-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="text-right text-sm">
-              <div className="font-semibold text-ink-heading">{user.email}</div>
-              <div className="text-ink-muted">
-                {user.role === 'ADMIN' ? 'Администратор' : 'Пользователь'}
-              </div>
-            </div>
-            <Button variant="pill" disabled={loggingOut} onClick={() => void logout()}>
-              {loggingOut ? 'Выход…' : 'Выйти'}
-            </Button>
-          </div>
-          {logoutError ? <p className="text-right text-sm text-red-600">{logoutError}</p> : null}
-        </div>
+        <HeaderAccountMenu
+          email={user.email}
+          roleLabel={user.role === 'ADMIN' ? 'Администратор' : 'Пользователь'}
+          loggingOut={loggingOut}
+          onLogout={() => void logout()}
+          logoutError={logoutError}
+        />
       }
     />
   );
