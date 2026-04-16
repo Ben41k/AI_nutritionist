@@ -8,7 +8,7 @@ import { useToast } from '@/shared/hooks/useToast';
 import { Button } from '@/shared/components/Button';
 import { RationTodayCard } from '@/features/ration/components/RationTodayCard';
 import { RationAiFullResponsePanel } from '@/features/ration/components/RationAiFullResponsePanel';
-import { formatFullPlanFromBundle, type StoredRationPlanBundle } from '@/features/ration/lib/formatFullPlan';
+import type { StoredRationPlanBundle } from '@/features/ration/lib/formatFullPlan';
 import { rationPlanPeriodLabel, todayLocalISO } from '@/features/ration/lib/dateIso';
 import { normalizeRationDayBodyForIso } from '@/features/ration/lib/normalizeDayRationText';
 import {
@@ -114,7 +114,6 @@ export function RationPage() {
   const hasBody = dayBody != null && dayBody.length > 0;
   const todayEmptyMessage = dayViewEmptyMessage(bundle, resolvedIso, hasBody);
 
-  const fullPlanText = useMemo(() => (bundle ? formatFullPlanFromBundle(bundle) : null), [bundle]);
   const fullPlanPeriodLabel = bundle ? rationPlanPeriodLabel(bundle) : null;
 
   const profileQuery = useQuery({
@@ -227,7 +226,7 @@ export function RationPage() {
             </div>
 
             <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-[min(100%,28rem)] xl:w-[32rem]">
-              <RationAiFullResponsePanel fullText={fullPlanText} periodLabel={fullPlanPeriodLabel} />
+              <RationAiFullResponsePanel bundle={bundle} periodLabel={fullPlanPeriodLabel} />
             </aside>
           </div>
         </div>

@@ -1,6 +1,8 @@
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { addDaysToLocalIso } from '@/features/ration/lib/dateIso';
+import { stripLeadingRationDayHeaderRu } from '@/features/ration/lib/normalizeDayRationText';
+import { parseRationDayBodyToMealTableRows } from '@/features/ration/lib/rationDayMealTable';
 
 function formatDayHeading(iso: string): string {
   const [y, m, d] = iso.split('-').map(Number);
@@ -30,6 +32,11 @@ export function RationTodayCard({
   const hasBody = dayBody != null && dayBody.trim().length > 0;
   const canPrev = minIso == null || selectedIso > minIso;
   const canNext = maxIso == null || selectedIso < maxIso;
+
+  const mealRows =
+    hasBody && dayBody != null
+      ? parseRationDayBodyToMealTableRows(stripLeadingRationDayHeaderRu(selectedIso, dayBody))
+      : [];
 
   return (
     <Card className="flex flex-col gap-3">
@@ -77,9 +84,32 @@ export function RationTodayCard({
       </div>
 
       {hasBody ? (
-        <pre className="max-h-[min(50vh,24rem)] overflow-y-auto whitespace-pre-wrap font-sans text-sm leading-relaxed text-ink-body">
-          {dayBody}
-        </pre>
+        <div className="max-h-[min(50vh,24rem)] min-h-0 overflow-y-auto overflow-x-auto rounded-lg border border-border/80 bg-surface/80">
+          <table className="w-full min-w-[16rem] border-collapse text-left text-sm text-ink-body">
+            <thead className="sticky top-0 z-[1] border-b-2 border-border bg-ink-heading/[0.06]">
+              <tr>
+                <th className="whitespace-nowrap border-b-2 border-border px-2.5 py-2 text-left text-sm font-semibold text-ink-heading sm:w-[9rem] sm:px-3">
+                  Приём пищи
+                </th>
+                <th className="border-b-2 border-border px-2.5 py-2 text-left text-sm font-semibold text-ink-heading sm:px-3">
+                  Меню
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border/90 [&>tr:last-child>td]:border-b-0">
+              {mealRows.map((row) => (
+                <tr key={row.key}>
+                  <td className="whitespace-nowrap border-b border-border/80 px-2.5 py-2 align-top font-medium text-ink-heading sm:px-3">
+                    {row.label}
+                  </td>
+                  <td className="border-b border-border/80 px-2.5 py-2 align-top sm:px-3">
+                    <span className="block whitespace-pre-wrap leading-relaxed text-ink-body">{row.content}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       ) : (
         <p className="text-sm text-ink-muted">{emptyMessage}</p>
       )}

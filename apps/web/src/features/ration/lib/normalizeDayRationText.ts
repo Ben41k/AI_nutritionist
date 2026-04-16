@@ -24,6 +24,15 @@ export function formatRationDayHeaderRu(iso: string): string {
   }).format(new Date(p.y, p.m - 1, p.d));
 }
 
+/** Убирает первую строку с заголовком дня (дублирует дату в UI таблицы). */
+export function stripLeadingRationDayHeaderRu(iso: string, body: string): string {
+  const header = formatRationDayHeaderRu(iso);
+  let t = body.replace(/\r\n/g, '\n').trim();
+  if (!t.startsWith(header)) return t;
+  t = t.slice(header.length);
+  return t.replace(/^\s+/, '').trim();
+}
+
 /**
  * Первая строка блока приёмов пищи: модель часто пишет «Завтрак:» / «Завтрак»: — старый regex не находил « в начале.
  */
