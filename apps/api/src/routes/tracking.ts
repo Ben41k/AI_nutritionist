@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../prisma.js';
 import { sendError } from '../lib/errors.js';
 import { getBearerUser } from '../auth/context.js';
+import { USER_INPUT } from '../lib/userInputBounds.js';
 
 function parseDayUtc(dateStr: string): Date | null {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
@@ -15,20 +16,20 @@ function parseDayUtc(dateStr: string): Date | null {
 }
 
 const weightPost = z.object({
-  weightKg: z.number().min(30).max(250),
+  weightKg: z.number().min(USER_INPUT.weightKg.min).max(USER_INPUT.weightKg.max),
   recordedAt: z.string().datetime().optional(),
 });
 
 const waterPost = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  addMl: z.number().int().min(1).max(5000),
+  addMl: z.number().int().min(USER_INPUT.waterAddMl.min).max(USER_INPUT.waterAddMl.max),
 });
 
 const measurementPost = z.object({
   recordedAt: z.string().datetime().optional(),
-  neckCm: z.number().min(20).max(80).optional(),
-  waistCm: z.number().min(40).max(200).optional(),
-  hipsCm: z.number().min(40).max(200).optional(),
+  neckCm: z.number().min(USER_INPUT.neckCm.min).max(USER_INPUT.neckCm.max).optional(),
+  waistCm: z.number().min(USER_INPUT.waistCm.min).max(USER_INPUT.waistCm.max).optional(),
+  hipsCm: z.number().min(USER_INPUT.hipsCm.min).max(USER_INPUT.hipsCm.max).optional(),
 });
 
 export async function registerTrackingRoutes(app: FastifyInstance): Promise<void> {
@@ -145,7 +146,15 @@ export async function registerTrackingRoutes(app: FastifyInstance): Promise<void
       create: { userId: u.sub, day, totalMl: parsed.data.addMl },
       update: { totalMl: { increment: parsed.data.addMl } },
     });
-    await reply.send({ day: row.day.toISOString().slice(0, 10), totalMl: row.totalMl });
+    let totalMl = row.totalMl;
+    if (totalMl > USER_INPUT.waterDailyTotalCapMl) {
+      const capped = await prisma.dailyWater.update({
+        where: { userId_day: { userId: u.sub, day } },
+        data: { totalMl: USER_INPUT.waterDailyTotalCapMl },
+      });
+      totalMl = capped.totalMl;
+    }
+    await reply.send({ day: row.day.toISOString().slice(0, 10), totalMl });
   });
 
   app.get('/tracking/measurements', async (req, reply) => {

@@ -5,6 +5,7 @@ import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
 import { Card } from '@/shared/components/Card';
+import { USER_INPUT } from '@/shared/lib/userInputBounds';
 
 export function RegisterPage() {
   const qc = useQueryClient();
@@ -21,7 +22,10 @@ export function RegisterPage() {
     try {
       await apiJson('/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password.slice(0, USER_INPUT.passwordMaxChars),
+        }),
       });
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
       nav('/');
@@ -44,6 +48,7 @@ export function RegisterPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               type="email"
+              maxLength={254}
               autoComplete="email"
               required
             />
@@ -56,6 +61,7 @@ export function RegisterPage() {
               type="password"
               autoComplete="new-password"
               minLength={8}
+              maxLength={USER_INPUT.passwordMaxChars}
               required
             />
           </div>

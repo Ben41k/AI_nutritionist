@@ -13,7 +13,7 @@ const deleteAccountBody = z.object({
 });
 
 const registerBody = z.object({
-  email: z.string().email(),
+  email: z.string().trim().min(1).max(254).email(),
   password: z.string().min(8).max(128),
 });
 

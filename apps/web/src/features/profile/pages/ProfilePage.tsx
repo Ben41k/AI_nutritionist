@@ -6,23 +6,21 @@ import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
 import { Textarea } from '@/shared/components/Textarea';
 import { useState } from 'react';
+import { USER_INPUT, clamp } from '@/shared/lib/userInputBounds';
 
 const goals = ['WEIGHT_LOSS', 'WEIGHT_GAIN', 'MAINTENANCE', 'HEALTH'] as const;
 const activity = ['SEDENTARY', 'LIGHT', 'MODERATE', 'HIGH', 'ATHLETE'] as const;
 const sexes = ['MALE', 'FEMALE', 'OTHER', 'UNSPECIFIED'] as const;
 
-const AGE_MIN = 14;
-const AGE_MAX = 110;
-const WEIGHT_MIN = 35;
-const WEIGHT_MAX = 250;
-const HEIGHT_MIN = 120;
-const HEIGHT_MAX = 230;
-const WATER_GOAL_MIN = 500;
-const WATER_GOAL_MAX = 12000;
-
-function clamp(n: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, n));
-}
+const AGE_MIN = USER_INPUT.profileAge.min;
+const AGE_MAX = USER_INPUT.profileAge.max;
+const WEIGHT_MIN = USER_INPUT.weightKg.min;
+const WEIGHT_MAX = USER_INPUT.weightKg.max;
+const HEIGHT_MIN = USER_INPUT.heightCm.min;
+const HEIGHT_MAX = USER_INPUT.heightCm.max;
+const WATER_GOAL_MIN = USER_INPUT.waterGoalMl.min;
+const WATER_GOAL_MAX = USER_INPUT.waterGoalMl.max;
+const TEXT_MAX = USER_INPUT.allergiesPreferencesMaxChars;
 
 const sexLabels: Record<(typeof sexes)[number], string> = {
   MALE: 'мужской',
@@ -70,6 +68,14 @@ function ProfileForm({ profile }: { profile: Profile }) {
     mutationFn: () => {
       const payload: Partial<Profile> = {
         ...form,
+        allergies:
+          form.allergies != null
+            ? form.allergies.slice(0, TEXT_MAX) || null
+            : null,
+        preferences:
+          form.preferences != null
+            ? form.preferences.slice(0, TEXT_MAX) || null
+            : null,
         age:
           form.age != null && !Number.isNaN(form.age)
             ? clamp(Math.round(form.age), AGE_MIN, AGE_MAX)
@@ -237,6 +243,11 @@ function ProfileForm({ profile }: { profile: Profile }) {
                 targetWeightKg: e.target.value ? Number(e.target.value) : null,
               })
             }
+            onBlur={() => {
+              if (form.targetWeightKg == null || Number.isNaN(form.targetWeightKg)) return;
+              const next = clamp(form.targetWeightKg, WEIGHT_MIN, WEIGHT_MAX);
+              if (next !== form.targetWeightKg) setForm({ ...form, targetWeightKg: next });
+            }}
           />
           <span className="mt-1 block text-[11px] font-normal text-ink-muted">
             Для процента выполнения цели на вкладке «Метрики»
@@ -257,6 +268,11 @@ function ProfileForm({ profile }: { profile: Profile }) {
                 startWeightKg: e.target.value ? Number(e.target.value) : null,
               })
             }
+            onBlur={() => {
+              if (form.startWeightKg == null || Number.isNaN(form.startWeightKg)) return;
+              const next = clamp(form.startWeightKg, WEIGHT_MIN, WEIGHT_MAX);
+              if (next !== form.startWeightKg) setForm({ ...form, startWeightKg: next });
+            }}
           />
           <span className="mt-1 block text-[11px] font-normal text-ink-muted">
             Если пусто — берётся самая ранняя запись веса из журнала
@@ -277,6 +293,11 @@ function ProfileForm({ profile }: { profile: Profile }) {
                 waterGoalMl: e.target.value ? Number(e.target.value) : 2000,
               })
             }
+            onBlur={() => {
+              if (form.waterGoalMl == null || Number.isNaN(form.waterGoalMl)) return;
+              const next = clamp(Math.round(form.waterGoalMl), WATER_GOAL_MIN, WATER_GOAL_MAX);
+              if (next !== form.waterGoalMl) setForm({ ...form, waterGoalMl: next });
+            }}
           />
         </label>
       </div>
@@ -284,6 +305,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         Аллергии / непереносимости
         <Textarea
           className="mt-1 rounded-md"
+          maxLength={TEXT_MAX}
           value={form.allergies ?? ''}
           onChange={(e) => setForm({ ...form, allergies: e.target.value })}
         />
@@ -292,6 +314,7 @@ function ProfileForm({ profile }: { profile: Profile }) {
         Предпочтения в еде
         <Textarea
           className="mt-1 rounded-md"
+          maxLength={TEXT_MAX}
           value={form.preferences ?? ''}
           onChange={(e) => setForm({ ...form, preferences: e.target.value })}
         />
@@ -340,6 +363,7 @@ function DeleteAccountSection() {
         <Input
           type="password"
           className="mt-1 rounded-md"
+          maxLength={USER_INPUT.passwordMaxChars}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete="current-password"

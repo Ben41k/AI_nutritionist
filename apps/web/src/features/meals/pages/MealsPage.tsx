@@ -17,6 +17,7 @@ import { Input } from '@/shared/components/Input';
 import { Textarea } from '@/shared/components/Textarea';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
+import { USER_INPUT } from '@/shared/lib/userInputBounds';
 
 type Meal = {
   id: string;
@@ -275,6 +276,7 @@ export function MealsPage() {
   const qc = useQueryClient();
   const [date, setDate] = useState(todayISO);
   const [description, setDescription] = useState('');
+  const [mealDescErr, setMealDescErr] = useState<string | null>(null);
   const [time, setTime] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -343,11 +345,12 @@ export function MealsPage() {
   const create = useMutation({
     mutationFn: async () => {
       const occurredAt = new Date(`${date}T${time}:00`).toISOString();
+      const desc = description.trim().slice(0, USER_INPUT.mealDescription.max);
       return apiJson<{ meal: Meal }>('/meals', {
         method: 'POST',
         body: JSON.stringify({
           occurredAt,
-          description,
+          description: desc,
         }),
       });
     },
@@ -493,7 +496,16 @@ export function MealsPage() {
           className="space-y-2"
           onSubmit={(e) => {
             e.preventDefault();
-            if (create.isPending || !description.trim()) return;
+            if (create.isPending) return;
+            setMealDescErr(null);
+            const trimmed = description.trim();
+            if (!trimmed) return;
+            if (trimmed.length > USER_INPUT.mealDescription.max) {
+              setMealDescErr(
+                `Описание не длиннее ${USER_INPUT.mealDescription.max} символов`,
+              );
+              return;
+            }
             create.mutate();
           }}
         >
@@ -521,12 +533,23 @@ export function MealsPage() {
             rows={2}
             placeholder="Кратко: что и сколько…"
             className="min-h-0 rounded-md py-2 text-sm"
+            maxLength={USER_INPUT.mealDescription.max}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setMealDescErr(null);
+              setDescription(e.target.value);
+            }}
             onKeyDown={(e) =>
-              handleEnterSubmit(e, !create.isPending && Boolean(description.trim()), () =>
-                create.mutate(),
-              )
+              handleEnterSubmit(e, !create.isPending && Boolean(description.trim()), () => {
+                const t = description.trim();
+                if (t.length > USER_INPUT.mealDescription.max) {
+                  setMealDescErr(
+                    `Описание не длиннее ${USER_INPUT.mealDescription.max} символов`,
+                  );
+                  return;
+                }
+                if (t) create.mutate();
+              })
             }
           />
           <div className="flex justify-end pt-0.5">
@@ -538,6 +561,7 @@ export function MealsPage() {
               {create.isPending ? 'Сохранение…' : 'Добавить'}
             </Button>
           </div>
+          {mealDescErr ? <p className="text-xs text-red-600">{mealDescErr}</p> : null}
           {create.isError ? <p className="text-xs text-red-600">Не удалось сохранить</p> : null}
         </form>
       </Card>

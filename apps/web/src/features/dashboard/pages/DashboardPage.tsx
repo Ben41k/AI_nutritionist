@@ -23,6 +23,7 @@ import {
   type Sex,
 } from '@/shared/lib/nutritionMetrics';
 import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
+import { USER_INPUT, inRange, parseFiniteNumber } from '@/shared/lib/userInputBounds';
 
 type Profile = {
   id: string;
@@ -696,9 +697,11 @@ function Section({ heading, children }: { heading: string; children: ReactNode }
 export function DashboardPage() {
   const qc = useQueryClient();
   const [weightInput, setWeightInput] = useState('');
+  const [weightInputErr, setWeightInputErr] = useState<string | null>(null);
   const [neck, setNeck] = useState('');
   const [waist, setWaist] = useState('');
   const [hips, setHips] = useState('');
+  const [measurementErr, setMeasurementErr] = useState<string | null>(null);
 
   const { data: profileData, isLoading: profileLoading } = useQuery({
     queryKey: ['profile'],
@@ -1093,23 +1096,48 @@ export function DashboardPage() {
     tdeeForCharts != null ? calorieTargetForAdherence(tdeeForCharts, profile.goal) : null;
 
   const weightSubmit = () => {
-    const n = Number(weightInput.replace(',', '.'));
-    if (!Number.isFinite(n)) return;
+    setWeightInputErr(null);
+    const n = parseFiniteNumber(weightInput);
+    if (n === null) {
+      setWeightInputErr('Введите число');
+      return;
+    }
+    if (!inRange(n, USER_INPUT.weightKg.min, USER_INPUT.weightKg.max)) {
+      setWeightInputErr(
+        `Допустимо от ${USER_INPUT.weightKg.min} до ${USER_INPUT.weightKg.max} кг`,
+      );
+      return;
+    }
     addWeight.mutate(n);
   };
 
   const measurementSubmit = () => {
+    setMeasurementErr(null);
     const body: Record<string, number> = {};
-    const n = (s: string) => {
-      const x = Number(s.replace(',', '.'));
-      return Number.isFinite(x) ? x : NaN;
+    const push = (
+      raw: string,
+      key: 'neckCm' | 'waistCm' | 'hipsCm',
+      label: string,
+      min: number,
+      max: number,
+    ): boolean => {
+      const t = raw.trim();
+      if (!t) return true;
+      const v = parseFiniteNumber(t);
+      if (v === null) {
+        setMeasurementErr(`${label}: введите число`);
+        return false;
+      }
+      if (!inRange(v, min, max)) {
+        setMeasurementErr(`${label}: допустимо ${min}–${max} см`);
+        return false;
+      }
+      body[key] = v;
+      return true;
     };
-    const nv = n(neck);
-    const wv = n(waist);
-    const hv = n(hips);
-    if (Number.isFinite(nv)) body.neckCm = nv;
-    if (Number.isFinite(wv)) body.waistCm = wv;
-    if (Number.isFinite(hv)) body.hipsCm = hv;
+    if (!push(neck, 'neckCm', 'Шея', USER_INPUT.neckCm.min, USER_INPUT.neckCm.max)) return;
+    if (!push(waist, 'waistCm', 'Талия', USER_INPUT.waistCm.min, USER_INPUT.waistCm.max)) return;
+    if (!push(hips, 'hipsCm', 'Бёдра', USER_INPUT.hipsCm.min, USER_INPUT.hipsCm.max)) return;
     if (Object.keys(body).length === 0) return;
     addMeasurement.mutate(body);
   };
@@ -1374,10 +1402,15 @@ export function DashboardPage() {
             <Input
               className="max-w-[140px] rounded-md"
               type="number"
+              min={USER_INPUT.weightKg.min}
+              max={USER_INPUT.weightKg.max}
               step="0.1"
               placeholder="кг"
               value={weightInput}
-              onChange={(e) => setWeightInput(e.target.value)}
+              onChange={(e) => {
+                setWeightInputErr(null);
+                setWeightInput(e.target.value);
+              }}
               onKeyDown={(e) =>
                 handleEnterSubmit(e, !addWeight.isPending && Boolean(weightInput.trim()), weightSubmit)
               }
@@ -1386,6 +1419,7 @@ export function DashboardPage() {
               {addWeight.isPending ? '…' : 'Сохранить'}
             </Button>
           </div>
+          {weightInputErr ? <p className="mt-2 text-xs text-red-600">{weightInputErr}</p> : null}
           {addWeight.isError ? <p className="mt-2 text-xs text-red-600">Ошибка</p> : null}
         </Card>
         <Card>
@@ -1408,10 +1442,15 @@ export function DashboardPage() {
             <Input
               className="rounded-md"
               type="number"
+              min={USER_INPUT.neckCm.min}
+              max={USER_INPUT.neckCm.max}
               step="0.1"
               placeholder="Шея, см"
               value={neck}
-              onChange={(e) => setNeck(e.target.value)}
+              onChange={(e) => {
+                setMeasurementErr(null);
+                setNeck(e.target.value);
+              }}
               onKeyDown={(e) =>
                 handleEnterSubmit(e, canSubmitMeasurement, measurementSubmit)
               }
@@ -1419,10 +1458,15 @@ export function DashboardPage() {
             <Input
               className="rounded-md"
               type="number"
+              min={USER_INPUT.waistCm.min}
+              max={USER_INPUT.waistCm.max}
               step="0.1"
               placeholder="Талия, см"
               value={waist}
-              onChange={(e) => setWaist(e.target.value)}
+              onChange={(e) => {
+                setMeasurementErr(null);
+                setWaist(e.target.value);
+              }}
               onKeyDown={(e) =>
                 handleEnterSubmit(e, canSubmitMeasurement, measurementSubmit)
               }
@@ -1430,10 +1474,15 @@ export function DashboardPage() {
             <Input
               className="rounded-md"
               type="number"
+              min={USER_INPUT.hipsCm.min}
+              max={USER_INPUT.hipsCm.max}
               step="0.1"
               placeholder="Бёдра, см"
               value={hips}
-              onChange={(e) => setHips(e.target.value)}
+              onChange={(e) => {
+                setMeasurementErr(null);
+                setHips(e.target.value);
+              }}
               onKeyDown={(e) =>
                 handleEnterSubmit(e, canSubmitMeasurement, measurementSubmit)
               }
@@ -1442,6 +1491,7 @@ export function DashboardPage() {
           <Button className="mt-3" onClick={measurementSubmit} disabled={addMeasurement.isPending}>
             Добавить замер
           </Button>
+          {measurementErr ? <p className="mt-2 text-xs text-red-600">{measurementErr}</p> : null}
         </Card>
       </div>
     </div>

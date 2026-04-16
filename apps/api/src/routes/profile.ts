@@ -4,19 +4,51 @@ import { ActivityLevel, NutritionGoal, Sex } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { sendError } from '../lib/errors.js';
 import { getBearerUser } from '../auth/context.js';
+import { USER_INPUT } from '../lib/userInputBounds.js';
 
 const profilePatch = z.object({
-  age: z.number().int().min(1).max(120).optional().nullable(),
+  age: z
+    .number()
+    .int()
+    .min(USER_INPUT.profileAge.min)
+    .max(USER_INPUT.profileAge.max)
+    .optional()
+    .nullable(),
   sex: z.nativeEnum(Sex).optional(),
-  weightKg: z.number().min(20).max(400).optional().nullable(),
-  heightCm: z.number().min(80).max(250).optional().nullable(),
+  weightKg: z
+    .number()
+    .min(USER_INPUT.weightKg.min)
+    .max(USER_INPUT.weightKg.max)
+    .optional()
+    .nullable(),
+  heightCm: z
+    .number()
+    .min(USER_INPUT.heightCm.min)
+    .max(USER_INPUT.heightCm.max)
+    .optional()
+    .nullable(),
   goal: z.nativeEnum(NutritionGoal).optional(),
   activityLevel: z.nativeEnum(ActivityLevel).optional(),
-  allergies: z.string().max(4000).optional().nullable(),
-  preferences: z.string().max(4000).optional().nullable(),
-  targetWeightKg: z.number().min(30).max(250).optional().nullable(),
-  startWeightKg: z.number().min(30).max(250).optional().nullable(),
-  waterGoalMl: z.number().int().min(500).max(12000).optional(),
+  allergies: z.string().max(USER_INPUT.allergiesPreferencesMaxChars).optional().nullable(),
+  preferences: z.string().max(USER_INPUT.allergiesPreferencesMaxChars).optional().nullable(),
+  targetWeightKg: z
+    .number()
+    .min(USER_INPUT.weightKg.min)
+    .max(USER_INPUT.weightKg.max)
+    .optional()
+    .nullable(),
+  startWeightKg: z
+    .number()
+    .min(USER_INPUT.weightKg.min)
+    .max(USER_INPUT.weightKg.max)
+    .optional()
+    .nullable(),
+  waterGoalMl: z
+    .number()
+    .int()
+    .min(USER_INPUT.waterGoalMl.min)
+    .max(USER_INPUT.waterGoalMl.max)
+    .optional(),
 });
 
 export async function registerProfileRoutes(app: FastifyInstance): Promise<void> {

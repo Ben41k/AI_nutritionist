@@ -10,6 +10,7 @@ import { Textarea } from '@/shared/components/Textarea';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { chatPaths } from '@/features/chat/routes';
 import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
+import { USER_INPUT } from '@/shared/lib/userInputBounds';
 import { ChatAssistantMarkdown } from '@/features/chat/components/ChatAssistantMarkdown';
 
 type Msg = {
@@ -27,6 +28,7 @@ export function ChatThreadPage() {
   const qc = useQueryClient();
   const { data: user } = useAuth();
   const [text, setText] = useState('');
+  const [composerErr, setComposerErr] = useState<string | null>(null);
   const [lastMeta, setLastMeta] = useState<string | null>(null);
   const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -106,13 +108,13 @@ export function ChatThreadPage() {
         : 'Память диалога: нет (мало сообщений с эмбеддингами или первые реплики)';
       setLastMeta(`${kb} · ${mem}`);
       if (typeof res.threadTitle === 'string' && res.threadTitle.length > 0 && threadId) {
-        qc.setQueryData(['chat-thread', threadId], (prev) => {
+        qc.setQueryData<{ thread: ChatThreadSummary }>(['chat-thread', threadId], (prev) => {
           const base: ChatThreadSummary = prev?.thread ?? {
             id: threadId,
             title: null,
             updatedAt: new Date().toISOString(),
           };
-          return { thread: { ...base, title: res.threadTitle } };
+          return { thread: { ...base, title: res.threadTitle ?? base.title } };
         });
         void qc.invalidateQueries({ queryKey: ['chat-threads'] });
       }
@@ -151,6 +153,17 @@ export function ChatThreadPage() {
 
   if (!threadId) return null;
 
+  const trySend = (raw: string) => {
+    const c = raw.trim();
+    if (!c) return;
+    if (c.length > USER_INPUT.chatMessageMaxChars) {
+      setComposerErr(`Сообщение не длиннее ${USER_INPUT.chatMessageMaxChars} символов`);
+      return;
+    }
+    setComposerErr(null);
+    send.mutate(c);
+  };
+
   const headerTitle =
     threadQuery.isPending && !editingTitle
       ? 'Загрузка…'
@@ -172,7 +185,7 @@ export function ChatThreadPage() {
       setEditingTitle(false);
       return;
     }
-    renameThread.mutate(trimmed.slice(0, 200));
+    renameThread.mutate(trimmed.slice(0, USER_INPUT.chatTitleMaxChars));
   };
 
   const cancelTitleEdit = () => {
@@ -190,7 +203,7 @@ export function ChatThreadPage() {
               className="max-w-full rounded-lg py-2 text-sm sm:max-w-md"
               value={titleDraft}
               autoFocus
-              maxLength={200}
+              maxLength={USER_INPUT.chatTitleMaxChars}
               disabled={renameThread.isPending}
               aria-label="Название чата"
               onChange={(e) => setTitleDraft(e.target.value)}
@@ -299,27 +312,28 @@ export function ChatThreadPage() {
         <Textarea
           className="min-h-[5.5rem] flex-1 rounded-xl border-border bg-surface/80"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          maxLength={USER_INPUT.chatMessageMaxChars}
+          onChange={(e) => {
+            setComposerErr(null);
+            setText(e.target.value);
+          }}
           onKeyDown={(e) =>
-            handleEnterSubmit(e, !send.isPending && Boolean(text.trim()), () => {
-              const c = text.trim();
-              if (c) send.mutate(c);
-            })
+            handleEnterSubmit(e, !send.isPending && Boolean(text.trim()), () => trySend(text))
           }
           placeholder="Ваш вопрос…"
         />
         <Button
           className="shrink-0 sm:mb-0.5"
-          onClick={() => {
-            const c = text.trim();
-            if (c) send.mutate(c);
-          }}
+          onClick={() => trySend(text)}
           disabled={send.isPending || !text.trim()}
         >
           {send.isPending ? 'Отправка…' : 'Отправить'}
         </Button>
       </div>
 
+      {composerErr ? (
+        <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">{composerErr}</p>
+      ) : null}
       {send.isError ? (
         <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">
           {send.error instanceof Error ? send.error.message : 'Ошибка отправки'}

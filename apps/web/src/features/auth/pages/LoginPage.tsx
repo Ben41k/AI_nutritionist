@@ -5,6 +5,7 @@ import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
 import { Card } from '@/shared/components/Card';
+import { USER_INPUT } from '@/shared/lib/userInputBounds';
 
 export function LoginPage() {
   const qc = useQueryClient();
@@ -21,7 +22,10 @@ export function LoginPage() {
     try {
       await apiJson('/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({
+          email: email.trim(),
+          password: password.slice(0, USER_INPUT.passwordMaxChars),
+        }),
       });
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
       nav('/');
@@ -44,6 +48,7 @@ export function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               type="email"
+              maxLength={254}
               autoComplete="email"
               required
             />
@@ -55,6 +60,7 @@ export function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               type="password"
               autoComplete="current-password"
+              maxLength={USER_INPUT.passwordMaxChars}
               required
             />
           </div>

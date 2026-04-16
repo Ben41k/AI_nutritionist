@@ -8,6 +8,7 @@ import { getBearerUser } from '../auth/context.js';
 import { openRouterRateLimitKey } from '../lib/rateLimitKeys.js';
 import { clampLimit, decodeCursor, encodeCursor } from '../lib/cursorPagination.js';
 import { createChatCompletion } from '../lib/openrouter.js';
+import { USER_INPUT } from '../lib/userInputBounds.js';
 
 const mealCreate = z.object({
   occurredAt: z.string().datetime(),
@@ -39,12 +40,27 @@ const mealsListQuery = z
     message: 'Provide ?date=YYYY-MM-DD or both ?from=&to= as ISO-8601 datetimes',
   });
 
+const { mealEstimate } = USER_INPUT;
 const structuredSchema = z.object({
-  caloriesKcal: optionalNumber,
-  proteinG: optionalNumber,
-  fatG: optionalNumber,
-  carbsG: optionalNumber,
-  notes: z.string().optional(),
+  caloriesKcal: optionalNumber.refine(
+    (v) =>
+      v === undefined ||
+      (v >= mealEstimate.caloriesKcal.min && v <= mealEstimate.caloriesKcal.max),
+    { message: 'caloriesKcal out of range' },
+  ),
+  proteinG: optionalNumber.refine(
+    (v) => v === undefined || (v >= mealEstimate.macroG.min && v <= mealEstimate.macroG.max),
+    { message: 'proteinG out of range' },
+  ),
+  fatG: optionalNumber.refine(
+    (v) => v === undefined || (v >= mealEstimate.macroG.min && v <= mealEstimate.macroG.max),
+    { message: 'fatG out of range' },
+  ),
+  carbsG: optionalNumber.refine(
+    (v) => v === undefined || (v >= mealEstimate.macroG.min && v <= mealEstimate.macroG.max),
+    { message: 'carbsG out of range' },
+  ),
+  notes: z.string().max(mealEstimate.notesMaxChars).optional(),
 });
 
 function extractJsonObject(raw: string): string {
