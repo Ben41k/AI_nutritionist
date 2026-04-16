@@ -60,6 +60,60 @@ function todayISO() {
   return `${y}-${m}-${day}`;
 }
 
+function localDateISO(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/** Последнее значение веса за локальные сутки; дни без записей не добавляют ключ. */
+function weightLastByLocalDay(entries: WeightEntry[]): Map<string, number> {
+  const sorted = [...entries].sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
+  const m = new Map<string, number>();
+  for (const e of sorted) {
+    m.set(localDateISO(new Date(e.recordedAt)), e.weightKg);
+  }
+  return m;
+}
+
+function forwardFillFromDayMap(dates: string[], byDay: Map<string, number>, seed: number | null): (number | null)[] {
+  let last = seed;
+  return dates.map((dt) => {
+    if (byDay.has(dt)) last = byDay.get(dt)!;
+    return last;
+  });
+}
+
+function forwardFillMeasurementField(
+  measurements: Measurement[],
+  dates: string[],
+  field: 'neckCm' | 'waistCm' | 'hipsCm',
+): (number | null)[] {
+  const sorted = [...measurements].sort((a, b) => Date.parse(a.recordedAt) - Date.parse(b.recordedAt));
+  const byDay = new Map<string, number>();
+  for (const m of sorted) {
+    const v = m[field];
+    if (v != null) byDay.set(localDateISO(new Date(m.recordedAt)), v);
+  }
+  let last: number | null = null;
+  return dates.map((dt) => {
+    if (byDay.has(dt)) last = byDay.get(dt)!;
+    return last;
+  });
+}
+
+function measurementAddsPerDay(measurements: Measurement[], dates: string[]): number[] {
+  const idx = new Map(dates.map((d, i) => [d, i]));
+  const counts = dates.map(() => 0);
+  for (const m of measurements) {
+    const k = localDateISO(new Date(m.recordedAt));
+    const i = idx.get(k);
+    if (i != null) counts[i] += 1;
+  }
+  return counts;
+}
+
 function sumMealCalories(meals: Meal[]): number {
   let sum = 0;
   for (const m of meals) {
@@ -236,6 +290,370 @@ function WaterWeekSparkline({
   );
 }
 
+function BmiTrendSparkline({ dates, bmis }: { dates: string[]; bmis: (number | null)[] }) {
+  const finite = bmis.filter((v): v is number => v != null && Number.isFinite(v));
+  const maxH = Math.max(32, ...finite, 1);
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">
+        ИМТ за 14 дней
+      </p>
+      <div className="flex h-16 gap-px sm:gap-0.5" role="img" aria-label="Динамика ИМТ по дням">
+        {dates.map((date, i) => {
+          const v = bmis[i] ?? null;
+          const hPct = v != null ? Math.max(14, (v / maxH) * 100) : 10;
+          const title =
+            v != null
+              ? `${formatDayLabel(date)}: ${v.toFixed(1)}`
+              : `${formatDayLabel(date)}: нет веса для дня`;
+          const cls =
+            v == null
+              ? 'bg-ink-muted/30'
+              : v < 18.5
+                ? 'bg-sky-500/75 dark:bg-sky-400/80'
+                : v < 25
+                  ? 'bg-emerald-500/75 dark:bg-emerald-400/80'
+                  : v < 30
+                    ? 'bg-amber-500/75 dark:bg-amber-400/80'
+                    : 'bg-rose-500/75 dark:bg-rose-400/80';
+          return (
+            <div key={date} title={title} className="group/b flex min-h-0 min-w-0 flex-1 flex-col justify-end">
+              <div
+                className={`w-full rounded-t transition-[filter] duration-150 group-hover/b:brightness-110 ${cls}`}
+                style={{ height: `${hPct}%`, minHeight: v != null ? 4 : 2 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">
+        Цвет по зонам ИМТ. Серый — нет данных веса на этот день (переносится последний известный вес после первой
+        записи).
+      </p>
+    </div>
+  );
+}
+
+function KcalTrendSparkline({
+  dates,
+  values,
+  title,
+  caption,
+  barClass,
+  formatTitle,
+}: {
+  dates: string[];
+  values: (number | null)[];
+  title: string;
+  caption: string;
+  barClass: (v: number | null) => string;
+  formatTitle: (date: string, v: number | null) => string;
+}) {
+  const finite = values.filter((v): v is number => v != null && Number.isFinite(v));
+  const maxH = Math.max(1, ...finite.map((x) => Math.abs(x)));
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">{title}</p>
+      <div className="flex h-16 gap-px sm:gap-0.5" role="img" aria-label={title}>
+        {dates.map((date, i) => {
+          const v = values[i] ?? null;
+          const hPct = v != null ? Math.max(12, (Math.abs(v) / maxH) * 100) : 9;
+          return (
+            <div key={date} title={formatTitle(date, v)} className="group/k flex min-h-0 min-w-0 flex-1 flex-col justify-end">
+              <div
+                className={`w-full rounded-t transition-[filter] duration-150 group-hover/k:brightness-110 ${barClass(v)}`}
+                style={{ height: `${hPct}%`, minHeight: v != null ? 4 : 2 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">{caption}</p>
+    </div>
+  );
+}
+
+function WeightKgSparkline({ dates, kgs }: { dates: string[]; kgs: (number | null)[] }) {
+  const finite = kgs.filter((v): v is number => v != null && Number.isFinite(v));
+  if (finite.length === 0) {
+    return (
+      <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+        <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">Вес по дням, кг</p>
+        <p className="text-[10px] text-ink-muted/85">Нет данных веса за период.</p>
+      </div>
+    );
+  }
+  const minW = Math.min(...finite);
+  const maxW = Math.max(...finite);
+  const span = Math.max(0.5, maxW - minW);
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">Вес по дням, кг</p>
+      <div className="flex h-16 gap-1 sm:gap-1.5" role="img" aria-label="Вес за несколько дней">
+        {dates.map((date, i) => {
+          const kg = kgs[i] ?? null;
+          const hPct =
+            kg != null ? Math.max(14, ((kg - minW) / span) * 100) : 10;
+          const title =
+            kg != null
+              ? `${formatDayLabel(date)}: ${kg.toFixed(1)} кг`
+              : `${formatDayLabel(date)}: нет данных`;
+          return (
+            <div key={date} title={title} className="group/wk flex min-h-0 min-w-0 flex-1 flex-col justify-end">
+              <div
+                className={`w-full rounded-t bg-primary/55 transition-[filter] duration-150 group-hover/wk:brightness-110 dark:bg-primary/50 ${
+                  kg == null ? '!bg-ink-muted/30' : ''
+                }`}
+                style={{ height: `${hPct}%`, minHeight: kg != null ? 4 : 2 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">
+        Высота относительно минимума и максимума на графике. Наведите на столбец для значения.
+      </p>
+    </div>
+  );
+}
+
+function GoalPercentSparkline({ dates, pcts }: { dates: string[]; pcts: (number | null)[] }) {
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">
+        Выполнение цели по весу, %
+      </p>
+      <div className="flex h-16 gap-px sm:gap-0.5" role="img" aria-label="Процент цели по дням">
+        {dates.map((date, i) => {
+          const p = pcts[i] ?? null;
+          const hPct = p != null ? Math.max(12, p) : 9;
+          const title =
+            p != null
+              ? `${formatDayLabel(date)}: ${p}%`
+              : `${formatDayLabel(date)}: нет данных для цели`;
+          return (
+            <div key={date} title={title} className="group/g flex min-h-0 min-w-0 flex-1 flex-col justify-end">
+              <div
+                className={`w-full rounded-t transition-[filter] duration-150 group-hover/g:brightness-110 ${
+                  p == null ? 'bg-ink-muted/30' : p >= 100 ? 'bg-emerald-500/80' : 'bg-primary/55 dark:bg-primary/50'
+                }`}
+                style={{ height: `${hPct}%`, minHeight: p != null ? 4 : 2 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">100% — достигнут целевой вес по выбранной цели снижения/набора.</p>
+    </div>
+  );
+}
+
+function MacroRowsSparkline({
+  dates,
+  protein,
+  fat,
+  carbs,
+}: {
+  dates: string[];
+  protein: (number | null)[];
+  fat: (number | null)[];
+  carbs: (number | null)[];
+}) {
+  const macroRow = (label: string, vals: (number | null)[], barBg: string) => {
+    const finite = vals.filter((v): v is number => v != null && Number.isFinite(v));
+    const maxH = Math.max(1, ...finite);
+    return (
+      <div key={label}>
+        <div className="mb-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-muted/70">{label}</div>
+        <div className="flex h-5 gap-px sm:gap-0.5">
+          {dates.map((date, i) => {
+            const v = vals[i] ?? null;
+            const hPct = v != null ? Math.max(18, (v / maxH) * 100) : 12;
+            const title = v != null ? `${formatDayLabel(date)}: ${v} г` : `${formatDayLabel(date)}: —`;
+            return (
+              <div key={`${label}-${date}`} title={title} className="flex min-w-0 flex-1 flex-col justify-end">
+                <div
+                  className={`w-full rounded-sm transition-[filter] duration-150 hover:brightness-110 ${
+                    v == null ? 'bg-ink-muted/25' : barBg
+                  }`}
+                  style={{ height: `${hPct}%`, minHeight: v != null ? 3 : 2 }}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">
+        Суточные нормы БЖУ по дням (г)
+      </p>
+      <div className="space-y-1.5">
+        {macroRow('Белки', protein, 'bg-violet-500/75 dark:bg-violet-400/80')}
+        {macroRow('Жиры', fat, 'bg-amber-500/70 dark:bg-amber-400/75')}
+        {macroRow('Углеводы', carbs, 'bg-teal-500/75 dark:bg-teal-400/80')}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">
+        Пересчёт от TDEE и веса на каждый день (последний известный вес). Три ряда — белки, жиры, углеводы.
+      </p>
+    </div>
+  );
+}
+
+function WhtrTrendSparkline({ dates, values }: { dates: string[]; values: (number | null)[] }) {
+  const finite = values.filter((v): v is number => v != null && Number.isFinite(v));
+  const maxH = Math.max(0.52, ...finite, 0.001);
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">WHtR за 14 дней</p>
+      <div className="flex h-16 gap-px sm:gap-0.5" role="img" aria-label="Динамика WHtR по дням">
+        {dates.map((date, i) => {
+          const v = values[i] ?? null;
+          const hPct = v != null ? Math.max(14, (v / maxH) * 100) : 10;
+          const title =
+            v != null
+              ? `${formatDayLabel(date)}: ${v.toFixed(3)}`
+              : `${formatDayLabel(date)}: нет талии в замерах`;
+          const cls =
+            v == null
+              ? 'bg-ink-muted/30'
+              : v <= 0.5
+                ? 'bg-emerald-500/75 dark:bg-emerald-400/80'
+                : 'bg-amber-500/75 dark:bg-amber-400/80';
+          return (
+            <div key={date} title={title} className="group/h flex min-h-0 min-w-0 flex-1 flex-col justify-end">
+              <div
+                className={`w-full rounded-t transition-[filter] duration-150 group-hover/h:brightness-110 ${cls}`}
+                style={{ height: `${hPct}%`, minHeight: v != null ? 4 : 2 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">
+        Зелёный — не выше ориентира 0,5, янтарный — выше. Серый — нет данных талии на день.
+      </p>
+    </div>
+  );
+}
+
+function BodyVolumesSparkline({
+  dates,
+  neck,
+  waist,
+  hips,
+}: {
+  dates: string[];
+  neck: (number | null)[];
+  waist: (number | null)[];
+  hips: (number | null)[];
+}) {
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">Объёмы за 14 дней, см</p>
+      <div className="flex w-full min-w-0 flex-col gap-3">
+        <div className="w-full min-w-0">
+          <CircumferenceRowSparkline
+            dates={dates}
+            values={neck}
+            label="Шея"
+            colorClass="bg-violet-500/75 dark:bg-violet-400/80"
+          />
+        </div>
+        <div className="w-full min-w-0">
+          <CircumferenceRowSparkline
+            dates={dates}
+            values={waist}
+            label="Талия"
+            colorClass="bg-sky-500/75 dark:bg-sky-400/80"
+          />
+        </div>
+        <div className="w-full min-w-0">
+          <CircumferenceRowSparkline
+            dates={dates}
+            values={hips}
+            label="Бёдра"
+            colorClass="bg-teal-500/75 dark:bg-teal-400/80"
+          />
+        </div>
+      </div>
+      <p className="text-[10px] text-ink-muted/85">
+        На каждый день — последний замер; если в этот день не вносили данные, значение переносится с предыдущего дня.
+      </p>
+    </div>
+  );
+}
+
+function CircumferenceRowSparkline({
+  dates,
+  values,
+  label,
+  colorClass,
+}: {
+  dates: string[];
+  values: (number | null)[];
+  label: string;
+  colorClass: string;
+}) {
+  const finite = values.filter((v): v is number => v != null && Number.isFinite(v));
+  const maxH = Math.max(1, ...finite);
+  const minH = finite.length ? Math.min(...finite) : 0;
+  const span = Math.max(1, maxH - minH);
+  return (
+    <div className="block w-full min-w-0">
+      <div className="mb-0.5 text-[9px] font-medium uppercase tracking-wide text-ink-muted/70">{label}</div>
+      <div className="flex h-6 w-full min-w-0 gap-px sm:gap-0.5">
+        {dates.map((date, i) => {
+          const v = values[i] ?? null;
+          const hPct = v != null ? Math.max(20, ((v - minH) / span) * 100) : 14;
+          const title = v != null ? `${formatDayLabel(date)}: ${v} см` : `${formatDayLabel(date)}: нет замера`;
+          return (
+            <div key={`${label}-${date}`} title={title} className="group/c flex min-w-0 flex-1 flex-col justify-end">
+              <div
+                className={`w-full rounded-sm transition-[filter] duration-150 group-hover/c:brightness-110 ${
+                  v == null ? 'bg-ink-muted/25' : colorClass
+                }`}
+                style={{ height: `${hPct}%`, minHeight: v != null ? 3 : 2 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MeasurementsActivitySparkline({ dates, counts }: { dates: string[]; counts: number[] }) {
+  const maxC = Math.max(1, ...counts);
+  return (
+    <div className="mt-3 space-y-2 border-t border-border/30 pt-3">
+      <p className="text-[10px] font-medium uppercase tracking-wide text-ink-muted/75">
+        Новые замеры за 14 дней
+      </p>
+      <div className="flex h-14 gap-px sm:gap-0.5" role="img" aria-label="Количество замеров по дням">
+        {dates.map((date, i) => {
+          const c = counts[i] ?? 0;
+          const hPct = c > 0 ? Math.max(28, (c / maxC) * 100) : 10;
+          const title = `${formatDayLabel(date)}: ${c} шт.`;
+          return (
+            <div key={date} title={title} className="group/m flex min-h-0 min-w-0 flex-1 flex-col justify-end">
+              <div
+                className={`w-full rounded-t transition-[filter] duration-150 group-hover/m:brightness-110 ${
+                  c > 0 ? 'bg-indigo-500/75 dark:bg-indigo-400/80' : 'bg-ink-muted/20'
+                }`}
+                style={{ height: `${hPct}%`, minHeight: c > 0 ? 4 : 2 }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-ink-muted/85">Столбец — сколько записей замеров добавлено в этот день.</p>
+    </div>
+  );
+}
+
 function Metric({
   title,
   value,
@@ -243,7 +661,7 @@ function Metric({
   detail,
 }: {
   title: string;
-  value: string;
+  value: ReactNode;
   description: string;
   detail?: ReactNode;
 }) {
@@ -390,11 +808,174 @@ export function DashboardPage() {
     return Math.round((sum / n) * 10) / 10;
   }, [entries]);
 
+  const profileStartWeightKg = profile?.startWeightKg ?? null;
+
   const startWeight = useMemo(() => {
-    if (profile?.startWeightKg != null) return profile.startWeightKg;
+    if (profileStartWeightKg != null) return profileStartWeightKg;
     if (entries.length === 0) return null;
     return entries[0].weightKg;
-  }, [entries, profile?.startWeightKg]);
+  }, [entries, profileStartWeightKg]);
+
+  const weightDayMap = useMemo(() => weightLastByLocalDay(entries), [entries]);
+
+  const weightsForward14 = useMemo(
+    () => forwardFillFromDayMap(dates14, weightDayMap, profile?.weightKg ?? null),
+    [dates14, weightDayMap, profile?.weightKg],
+  );
+
+  const weightsForward7 = useMemo(
+    () => forwardFillFromDayMap(dates7, weightDayMap, profile?.weightKg ?? null),
+    [dates7, weightDayMap, profile?.weightKg],
+  );
+
+  const bmiSeries14 = useMemo(() => {
+    const hCm = profile?.heightCm;
+    if (hCm == null) return dates14.map(() => null);
+    return weightsForward14.map((w) => (w != null && w > 0 ? bmi(w, hCm) : null));
+  }, [weightsForward14, profile?.heightCm, dates14]);
+
+  const bmrSeries14 = useMemo(() => {
+    if (!profile) return dates14.map(() => null);
+    const age = profile.age;
+    const heightCm = profile.heightCm;
+    if (age == null || heightCm == null) {
+      return dates14.map(() => null);
+    }
+    const sex = profile.sex;
+    return weightsForward14.map((w) =>
+      w != null && w > 0
+        ? bmrMifflinStJeor({
+            weightKg: w,
+            heightCm,
+            age,
+            sex,
+          })
+        : null,
+    );
+  }, [profile, weightsForward14, dates14]);
+
+  const tdeeSeries14 = useMemo(() => {
+    if (!profile) return dates14.map(() => null);
+    const age = profile.age;
+    const heightCm = profile.heightCm;
+    if (age == null || heightCm == null) {
+      return dates14.map(() => null);
+    }
+    const sex = profile.sex;
+    const activityLevel = profile.activityLevel;
+    return weightsForward14.map((w) => {
+      if (w == null || !(w > 0)) return null;
+      const b = bmrMifflinStJeor({
+        weightKg: w,
+        heightCm,
+        age,
+        sex,
+      });
+      return tdeeFrom(b, activityLevel);
+    });
+  }, [profile, weightsForward14, dates14]);
+
+  const whtrSeries14 = useMemo(() => {
+    const hCm = profile?.heightCm;
+    if (hCm == null) return dates14.map(() => null);
+    const waistF = forwardFillMeasurementField(measurements, dates14, 'waistCm');
+    return waistF.map((waist) => (waist != null ? whtr(waist, hCm) : null));
+  }, [measurements, dates14, profile?.heightCm]);
+
+  const deltaSeries14 = useMemo(() => {
+    if (startWeight == null) return dates14.map(() => null);
+    return weightsForward14.map((w) =>
+      w != null ? Math.round((w - startWeight) * 10) / 10 : null,
+    );
+  }, [weightsForward14, startWeight, dates14]);
+
+  const goalPctSeries14 = useMemo(() => {
+    if (!profile || startWeight == null) {
+      return dates14.map(() => null);
+    }
+    const targetWeight = profile.targetWeightKg;
+    const goal = profile.goal;
+    if (
+      targetWeight == null ||
+      (goal !== 'WEIGHT_LOSS' && goal !== 'WEIGHT_GAIN')
+    ) {
+      return dates14.map(() => null);
+    }
+    return weightsForward14.map((w) =>
+      w != null
+        ? goalCompletionPercent({
+            goal,
+            currentWeight: w,
+            startWeight,
+            targetWeight,
+          })
+        : null,
+    );
+  }, [profile, weightsForward14, startWeight, dates14]);
+
+  const macroSeries14 = useMemo(() => {
+    if (!profile) {
+      return {
+        protein: dates14.map(() => null),
+        fat: dates14.map(() => null),
+        carbs: dates14.map(() => null),
+      };
+    }
+    const age = profile.age;
+    const heightCm = profile.heightCm;
+    if (age == null || heightCm == null) {
+      return {
+        protein: dates14.map(() => null),
+        fat: dates14.map(() => null),
+        carbs: dates14.map(() => null),
+      };
+    }
+    const sex = profile.sex;
+    const activityLevel = profile.activityLevel;
+    const pK = proteinGramsPerKg(profile.goal);
+    const protein: (number | null)[] = [];
+    const fat: (number | null)[] = [];
+    const carbs: (number | null)[] = [];
+    for (let i = 0; i < dates14.length; i++) {
+      const w = weightsForward14[i];
+      if (w == null || !(w > 0)) {
+        protein.push(null);
+        fat.push(null);
+        carbs.push(null);
+        continue;
+      }
+      const b = bmrMifflinStJeor({
+        weightKg: w,
+        heightCm,
+        age,
+        sex,
+      });
+      const td = tdeeFrom(b, activityLevel);
+      const m = targetMacrosFromTdee(td, w, pK);
+      protein.push(m.proteinG);
+      fat.push(m.fatG);
+      carbs.push(m.carbsG);
+    }
+    return { protein, fat, carbs };
+  }, [profile, weightsForward14, dates14]);
+
+  const measCountByDay14 = useMemo(
+    () => measurementAddsPerDay(measurements, dates14),
+    [measurements, dates14],
+  );
+
+  const neckSeries14 = useMemo(
+    () => forwardFillMeasurementField(measurements, dates14, 'neckCm'),
+    [measurements, dates14],
+  );
+  const waistSeries14 = useMemo(
+    () => forwardFillMeasurementField(measurements, dates14, 'waistCm'),
+    [measurements, dates14],
+  );
+  const hipsSeries14 = useMemo(
+    () => forwardFillMeasurementField(measurements, dates14, 'hipsCm'),
+    [measurements, dates14],
+  );
 
   const latestWaist = useMemo(() => {
     for (const m of measurements) {
@@ -551,11 +1132,26 @@ export function DashboardPage() {
               : METRIC_EMPTY
           }
           description="Индекс массы тела: базовый маркер состояния веса."
+          detail={<BmiTrendSparkline dates={dates14} bmis={bmiSeries14} />}
         />
         <Metric
           title="BMR"
           value={bmr != null ? `${bmr} ккал/сут` : METRIC_EMPTY}
           description="Базальный метаболизм: минимальный расход энергии в покое (Миффлин — Сан Жеор)."
+          detail={
+            <KcalTrendSparkline
+              dates={dates14}
+              values={bmrSeries14}
+              title="BMR за 14 дней, ккал/сут"
+              caption="По последнему известному весу на конец каждого дня."
+              barClass={(v) => (v == null ? 'bg-ink-muted/30' : 'bg-primary/55 dark:bg-primary/50')}
+              formatTitle={(date, v) =>
+                v != null
+                  ? `${formatDayLabel(date)}: ${Math.round(v)} ккал/сут`
+                  : `${formatDayLabel(date)}: нет данных`
+              }
+            />
+          }
         />
         <Metric
           title="TDEE"
@@ -565,6 +1161,20 @@ export function DashboardPage() {
               : METRIC_EMPTY
           }
           description="Суточный расход: норма калорий с учётом коэффициента активности."
+          detail={
+            <KcalTrendSparkline
+              dates={dates14}
+              values={tdeeSeries14}
+              title="TDEE за 14 дней, ккал/сут"
+              caption="Тот же расчёт BMR с вашим коэффициентом активности на каждый день."
+              barClass={(v) => (v == null ? 'bg-ink-muted/30' : 'bg-primary/60 dark:bg-primary/55')}
+              formatTitle={(date, v) =>
+                v != null
+                  ? `${formatDayLabel(date)}: ${Math.round(v)} ккал/сут`
+                  : `${formatDayLabel(date)}: нет данных`
+              }
+            />
+          }
         />
         <Metric
           title="WHtR"
@@ -574,6 +1184,7 @@ export function DashboardPage() {
               : METRIC_EMPTY
           }
           description="Талия / рост: коэффициент распределения жировой ткани (норма до 0,5)."
+          detail={<WhtrTrendSparkline dates={dates14} values={whtrSeries14} />}
         />
       </Section>
 
@@ -582,6 +1193,7 @@ export function DashboardPage() {
           title="Средненедельный вес"
           value={weeklyAvg != null ? `${weeklyAvg} кг` : METRIC_EMPTY}
           description="Среднее по записям за 7 суток до последнего замера (сглаживание скачков)."
+          detail={<WeightKgSparkline dates={dates7} kgs={weightsForward7} />}
         />
         <Metric
           title="Дельта веса"
@@ -591,6 +1203,28 @@ export function DashboardPage() {
               : METRIC_EMPTY
           }
           description="Разница между стартовым и текущим весом."
+          detail={
+            <KcalTrendSparkline
+              dates={dates14}
+              values={deltaSeries14}
+              title="Отклонение от стартового веса, кг"
+              caption="Янтарный — выше старта, изумрудный — ниже. Высота — по модулю отклонения."
+              barClass={(v) =>
+                v == null
+                  ? 'bg-ink-muted/30'
+                  : v > 0
+                    ? 'bg-amber-500/75 dark:bg-amber-400/80'
+                    : v < 0
+                      ? 'bg-emerald-500/75 dark:bg-emerald-400/80'
+                      : 'bg-ink-muted/40'
+              }
+              formatTitle={(date, v) =>
+                v != null
+                  ? `${formatDayLabel(date)}: ${v > 0 ? '+' : ''}${v} кг`
+                  : `${formatDayLabel(date)}: нет данных`
+              }
+            />
+          }
         />
         <Metric
           title="Процент выполнения цели"
@@ -600,6 +1234,7 @@ export function DashboardPage() {
               : METRIC_EMPTY
           }
           description="Насколько вы близки к желаемому результату."
+          detail={<GoalPercentSparkline dates={dates14} pcts={goalPctSeries14} />}
         />
         <Metric
           title="Водный баланс"
@@ -624,31 +1259,66 @@ export function DashboardPage() {
               : METRIC_EMPTY
           }
           description="Суточная норма белков, жиров и углеводов (оценка от TDEE и белка г/кг)."
+          detail={
+            <MacroRowsSparkline
+              dates={dates14}
+              protein={macroSeries14.protein}
+              fat={macroSeries14.fat}
+              carbs={macroSeries14.carbs}
+            />
+          }
         />
         <Metric
           title="Норма белка на кг"
           value={`${proteinPerKg} г/кг`}
           description="Индивидуальная потребность в диапазоне 1,5–2,2 г/кг по выбранной цели."
+          detail={
+            <KcalTrendSparkline
+              dates={dates14}
+              values={macroSeries14.protein}
+              title="Суточный белок по дням, г"
+              caption="Граммы в сутки при вашей цели г/кг — меняются вместе с весом на графике."
+              barClass={(v) => (v == null ? 'bg-ink-muted/30' : 'bg-violet-500/75 dark:bg-violet-400/80')}
+              formatTitle={(date, v) =>
+                v != null
+                  ? `${formatDayLabel(date)}: ${v} г`
+                  : `${formatDayLabel(date)}: нет данных`
+              }
+            />
+          }
         />
         <Metric
           title="Динамика объёмов (шея / талия / бёдра)"
           value={
-            measDynamics
-              ? [
-                  measDynamics.neck ? `шея ${measDynamics.neck}` : null,
-                  measDynamics.waist ? `талия ${measDynamics.waist}` : null,
-                  measDynamics.hips ? `бёдра ${measDynamics.hips}` : null,
-                ]
-                  .filter(Boolean)
-                  .join(' · ') || METRIC_EMPTY
-              : METRIC_EMPTY
+            measDynamics ? (
+              [measDynamics.neck, measDynamics.waist, measDynamics.hips].every((s) => !s) ? (
+                METRIC_EMPTY
+              ) : (
+                <div className="space-y-0.5 leading-snug">
+                  {measDynamics.neck ? <div>шея {measDynamics.neck}</div> : null}
+                  {measDynamics.waist ? <div>талия {measDynamics.waist}</div> : null}
+                  {measDynamics.hips ? <div>бёдра {measDynamics.hips}</div> : null}
+                </div>
+              )
+            ) : (
+              METRIC_EMPTY
+            )
           }
           description="Сравнение двух последних замеров с данными по каждому параметру."
+          detail={
+            <BodyVolumesSparkline
+              dates={dates14}
+              neck={neckSeries14}
+              waist={waistSeries14}
+              hips={hipsSeries14}
+            />
+          }
         />
         <Metric
           title="Замеры"
           value={measurements.length ? `${measurements.length} в журнале` : METRIC_EMPTY}
           description="Добавляйте замеры ниже — для WHtR используется последняя талия."
+          detail={<MeasurementsActivitySparkline dates={dates14} counts={measCountByDay14} />}
         />
       </Section>
 
