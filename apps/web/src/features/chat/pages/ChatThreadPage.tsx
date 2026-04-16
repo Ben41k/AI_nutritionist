@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useConfirmDialog } from '@/shared/hooks/useConfirmDialog';
 import { useToast } from '@/shared/hooks/useToast';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { useAuth } from '@/features/auth/hooks/useAuth';
@@ -29,6 +30,7 @@ export function ChatThreadPage() {
   const qc = useQueryClient();
   const { data: user } = useAuth();
   const toast = useToast();
+  const confirm = useConfirmDialog();
   const [text, setText] = useState('');
   const [lastMeta, setLastMeta] = useState<string | null>(null);
   const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
@@ -253,14 +255,15 @@ export function ChatThreadPage() {
           disabled={removeThread.isPending || send.isPending}
           aria-label={removeThread.isPending ? 'Удаление чата…' : 'Удалить чат'}
           onClick={() => {
-            if (
-              !window.confirm(
-                'Удалить этот чат? Все сообщения будут удалены безвозвратно.',
-              )
-            ) {
-              return;
-            }
-            removeThread.mutate();
+            void (async () => {
+              const ok = await confirm({
+                title: 'Удалить чат?',
+                message: 'Все сообщения будут удалены безвозвратно.',
+                tone: 'danger',
+              });
+              if (!ok) return;
+              removeThread.mutate();
+            })();
           }}
         >
           <TrashIcon

@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useConfirmDialog } from '@/shared/hooks/useConfirmDialog';
 import { useToast } from '@/shared/hooks/useToast';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { fetchMealsAllPagesForCalendarDay } from '@/shared/lib/fetchMealsAllPages';
@@ -283,6 +284,7 @@ function DayCaloriesBar({
 export function MealsPage() {
   const qc = useQueryClient();
   const toast = useToast();
+  const confirm = useConfirmDialog();
   const [date, setDate] = useState(todayISO);
   const [description, setDescription] = useState('');
   const [time, setTime] = useState(() => {
@@ -605,10 +607,15 @@ export function MealsPage() {
                       disabled={remove.isPending || create.isPending}
                       aria-label="Удалить запись о приёме пищи"
                       onClick={() => {
-                        if (!window.confirm('Удалить эту запись из дневника?')) {
-                          return;
-                        }
-                        remove.mutate(m.id);
+                        void (async () => {
+                          const ok = await confirm({
+                            title: 'Удалить запись?',
+                            message: 'Эта запись будет удалена из дневника безвозвратно.',
+                            tone: 'danger',
+                          });
+                          if (!ok) return;
+                          remove.mutate(m.id);
+                        })();
                       }}
                     >
                       <TrashIcon className="size-5 shrink-0 opacity-90" />

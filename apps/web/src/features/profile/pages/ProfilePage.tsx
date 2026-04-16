@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useConfirmDialog } from '@/shared/hooks/useConfirmDialog';
 import { useToast } from '@/shared/hooks/useToast';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
@@ -338,6 +339,7 @@ function DeleteAccountSection() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const toast = useToast();
+  const confirm = useConfirmDialog();
   const [password, setPassword] = useState('');
 
   const del = useMutation({
@@ -379,14 +381,17 @@ function DeleteAccountSection() {
         className="border border-red-200 bg-red-50 text-red-800 hover:bg-red-100"
         disabled={del.isPending || !password}
         onClick={() => {
-          if (
-            !window.confirm(
-              'Удалить аккаунт и все данные безвозвратно? Это действие нельзя отменить.',
-            )
-          ) {
-            return;
-          }
-          del.mutate();
+          void (async () => {
+            const ok = await confirm({
+              title: 'Удалить аккаунт?',
+              message:
+                'Безвозвратно удалятся профиль, дневник питания, чаты, вес, вода и другие данные. Это действие нельзя отменить.',
+              tone: 'danger',
+              confirmLabel: 'Удалить аккаунт',
+            });
+            if (!ok) return;
+            del.mutate();
+          })();
         }}
       >
         {del.isPending ? 'Удаление…' : 'Удалить аккаунт'}

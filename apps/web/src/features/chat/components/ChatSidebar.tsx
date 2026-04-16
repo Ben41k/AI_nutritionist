@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
+import { useConfirmDialog } from '@/shared/hooks/useConfirmDialog';
 import { useToast } from '@/shared/hooks/useToast';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Button } from '@/shared/components/Button';
@@ -14,6 +15,7 @@ export function ChatSidebar() {
   const { threadId: activeThreadId } = useParams();
   const qc = useQueryClient();
   const toast = useToast();
+  const confirm = useConfirmDialog();
   const { data, isLoading } = useQuery({
     queryKey: ['chat-threads'],
     queryFn: () => apiJson<{ threads: Thread[] }>('/chat/threads'),
@@ -86,14 +88,15 @@ export function ChatSidebar() {
                     disabled={remove.isPending}
                     aria-label="Удалить чат"
                     onClick={() => {
-                      if (
-                        !window.confirm(
-                          'Удалить этот чат? Все сообщения будут удалены безвозвратно.',
-                        )
-                      ) {
-                        return;
-                      }
-                      remove.mutate(t.id);
+                      void (async () => {
+                        const ok = await confirm({
+                          title: 'Удалить чат?',
+                          message: 'Все сообщения будут удалены безвозвратно.',
+                          tone: 'danger',
+                        });
+                        if (!ok) return;
+                        remove.mutate(t.id);
+                      })();
                     }}
                   >
                     <TrashIcon className="size-5 shrink-0 opacity-90" />
