@@ -2,15 +2,15 @@ import { Card } from '@/shared/components/Card';
 
 export function RationAiFullResponsePanel({
   fullText,
-  monthLabel,
+  periodLabel,
 }: {
   fullText: string | null;
-  monthLabel: string | null;
+  periodLabel: string | null;
 }) {
   return (
     <Card className="flex max-h-[min(75vh,calc(100dvh-10rem))] flex-col lg:max-h-[calc(100dvh-8rem)]">
       <h3 className="mb-2 shrink-0 text-sm font-semibold uppercase tracking-wide text-ink-muted">
-        Ответ ИИ{monthLabel ? ` · ${monthLabel}` : ''}
+        Ответ ИИ{periodLabel ? ` · ${periodLabel}` : ''}
       </h3>
       {fullText != null && fullText.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-y-auto pr-1">

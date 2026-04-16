@@ -7,14 +7,27 @@ import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { RationTodayCard } from '@/features/ration/components/RationTodayCard';
 import { RationAiFullResponsePanel } from '@/features/ration/components/RationAiFullResponsePanel';
-import { formatFullPlanFromBundle } from '@/features/ration/lib/formatFullPlan';
-import { addMonthsYm, monthFromToday, monthTitleRu, todayLocalISO } from '@/features/ration/lib/dateIso';
+import { formatFullPlanFromBundle, type StoredRationPlanBundle } from '@/features/ration/lib/formatFullPlan';
+import {
+  listIsoDatesInMonth,
+  monthFromToday,
+  rationPlanPeriodLabel,
+  todayLocalISO,
+} from '@/features/ration/lib/dateIso';
 
 const RATION_STORAGE_PREFIX = 'ai-nutritionist:monthly-ration:';
 
 export type RationBundleV2 = {
   v: 2;
   month: string;
+  preamble: string | null;
+  days: Record<string, string>;
+};
+
+export type RationBundleV3 = {
+  v: 3;
+  periodStart: string;
+  periodEnd: string;
   preamble: string | null;
   days: Record<string, string>;
 };
@@ -53,10 +66,32 @@ function isV2Bundle(j: unknown): j is RationBundleV2 {
   );
 }
 
-function parseStoredRation(raw: string | null): RationBundleV2 | null {
+function isV3Bundle(j: unknown): j is RationBundleV3 {
+  if (typeof j !== 'object' || j === null) return false;
+  const o = j as Record<string, unknown>;
+  return (
+    o.v === 3 &&
+    typeof o.periodStart === 'string' &&
+    typeof o.periodEnd === 'string' &&
+    typeof o.days === 'object' &&
+    o.days !== null &&
+    !Array.isArray(o.days)
+  );
+}
+
+function parseStoredRation(raw: string | null): StoredRationPlanBundle | null {
   if (raw == null || raw.length === 0) return null;
   try {
     const j = JSON.parse(raw) as unknown;
+    if (isV3Bundle(j)) {
+      return {
+        v: 3,
+        periodStart: j.periodStart,
+        periodEnd: j.periodEnd,
+        preamble: typeof j.preamble === 'string' ? j.preamble : null,
+        days: j.days as Record<string, string>,
+      };
+    }
     if (isV2Bundle(j)) {
       return {
         v: 2,
@@ -73,8 +108,35 @@ function parseStoredRation(raw: string | null): RationBundleV2 | null {
   }
 }
 
-function serializeBundle(b: RationBundleV2): string {
+function serializeBundle(b: StoredRationPlanBundle): string {
   return JSON.stringify(b);
+}
+
+function bundleDateBounds(bundle: StoredRationPlanBundle): { min: string; max: string } {
+  if (bundle.v === 3) return { min: bundle.periodStart, max: bundle.periodEnd };
+  const seq = listIsoDatesInMonth(bundle.month);
+  const first = seq[0];
+  const last = seq[seq.length - 1];
+  if (first === undefined || last === undefined) {
+    return { min: `${bundle.month}-01`, max: `${bundle.month}-01` };
+  }
+  return { min: first, max: last };
+}
+
+function dayViewEmptyMessage(
+  bundle: StoredRationPlanBundle | null,
+  selectedIso: string,
+  hasBody: boolean,
+): string {
+  if (hasBody) return '';
+  if (!bundle) {
+    return 'Сформируйте рацион ниже — затем выберите день в календаре, чтобы открыть пример питания на эту дату.';
+  }
+  const { min, max } = bundleDateBounds(bundle);
+  if (selectedIso < min || selectedIso > max) {
+    return `Выбранная дата вне сохранённого периода плана. Доступны дни с ${min} по ${max}. Выберите день в этом диапазоне или сформируйте новый рацион.`;
+  }
+  return 'В ответе ИИ для этого дня нет текста — попробуйте сформировать рацион ещё раз.';
 }
 
 type Profile = {
@@ -105,7 +167,8 @@ function generationErrorMessage(err: unknown): string {
 const rationStoredQueryKey = (userId: string) => ['ration', 'monthly-plan-stored', userId] as const;
 
 type MonthlyApiResponse = {
-  month: string;
+  periodStart: string;
+  periodEnd: string;
   preamble: string | null;
   days: Record<string, string>;
   retrievalUsed?: boolean;
@@ -114,7 +177,7 @@ type MonthlyApiResponse = {
 export function RationPage() {
   const { data: user } = useAuth();
   const qc = useQueryClient();
-  const [generateMonth, setGenerateMonth] = useState(monthFromToday);
+  const [selectedIso, setSelectedIso] = useState(todayLocalISO);
 
   const rationStoredQuery = useQuery({
     queryKey: rationStoredQueryKey(user?.id ?? ''),
@@ -131,25 +194,29 @@ export function RationPage() {
   const rawStored = rationStoredQuery.data ?? null;
   const bundle = useMemo(() => parseStoredRation(rawStored), [rawStored]);
 
-  const todayIso = todayLocalISO();
-  const todayMonth = todayIso.slice(0, 7);
+  const bounds = bundle != null ? bundleDateBounds(bundle) : null;
+  const minIso = bounds?.min ?? null;
+  const maxIso = bounds?.max ?? null;
 
-  const todayBody =
-    bundle != null && bundle.month === todayMonth
-      ? (bundle.days[todayIso]?.trim() ?? null)
-      : null;
-  const hasTodayBody = todayBody != null && todayBody.length > 0;
+  /** Дата для UI: при смене плана «поджимаем» к допустимому диапазону без setState в эффекте. */
+  const resolvedIso = useMemo(() => {
+    if (bundle == null || minIso == null || maxIso == null) return selectedIso;
+    if (selectedIso >= minIso && selectedIso <= maxIso) return selectedIso;
+    const t = todayLocalISO();
+    return t >= minIso && t <= maxIso ? t : minIso;
+  }, [bundle, minIso, maxIso, selectedIso]);
 
-  const todayEmptyMessage = !bundle
-    ? 'Сформируйте рацион ниже — для сегодняшней даты появится фрагмент из ответа ИИ, если он попадает в выбранный при генерации месяц.'
-    : bundle.month !== todayMonth
-      ? `Сохранён план за ${bundle.month}, а сегодня уже ${todayMonth}. Сгенерируйте рацион за текущий месяц или откройте полный ответ справа.`
-      : !hasTodayBody
-        ? 'В ответе ИИ для сегодня нет текста — попробуйте сформировать рацион ещё раз.'
-        : '';
+  const dayBody = useMemo(() => {
+    if (bundle == null) return null;
+    const v = bundle.days[resolvedIso]?.trim();
+    return v != null && v.length > 0 ? v : null;
+  }, [bundle, resolvedIso]);
+
+  const hasBody = dayBody != null && dayBody.length > 0;
+  const todayEmptyMessage = dayViewEmptyMessage(bundle, resolvedIso, hasBody);
 
   const fullPlanText = useMemo(() => (bundle ? formatFullPlanFromBundle(bundle) : null), [bundle]);
-  const fullPlanMonthTitle = bundle ? monthTitleRu(bundle.month) : null;
+  const fullPlanPeriodLabel = bundle ? rationPlanPeriodLabel(bundle) : null;
 
   const profileQuery = useQuery({
     queryKey: ['profile'],
@@ -160,14 +227,15 @@ export function RationPage() {
     mutationFn: () =>
       apiJson<MonthlyApiResponse>('/meal-ration/monthly', {
         method: 'POST',
-        body: JSON.stringify({ month: generateMonth }),
+        body: JSON.stringify({ startDate: todayLocalISO() }),
       }),
     onSuccess: (data) => {
       const uid = user?.id;
       if (uid) {
-        const next: RationBundleV2 = {
-          v: 2,
-          month: data.month,
+        const next: RationBundleV3 = {
+          v: 3,
+          periodStart: data.periodStart,
+          periodEnd: data.periodEnd,
           preamble: data.preamble,
           days: data.days,
         };
@@ -175,7 +243,10 @@ export function RationPage() {
         persistRationRaw(uid, raw);
         qc.setQueryData(rationStoredQueryKey(uid), raw);
       }
-      setGenerateMonth(data.month);
+      const t = todayLocalISO();
+      const sel =
+        t >= data.periodStart && t <= data.periodEnd ? t : data.periodStart;
+      setSelectedIso(sel);
     },
   });
 
@@ -211,44 +282,24 @@ export function RationPage() {
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:gap-8">
             <div className="flex min-w-0 flex-1 flex-col gap-6">
               <RationTodayCard
-                todayIso={todayIso}
-                todayBody={hasTodayBody ? todayBody : null}
+                selectedIso={resolvedIso}
+                onSelectedIsoChange={setSelectedIso}
+                minIso={minIso}
+                maxIso={maxIso}
+                dayBody={hasBody ? dayBody : null}
                 emptyMessage={todayEmptyMessage}
               />
 
               <Card className="flex flex-col gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-ink-heading">Рацион на месяц</h2>
+                  <h2 className="text-lg font-semibold text-ink-heading">Рацион на месяц вперёд</h2>
                   <p className="mt-1 text-sm text-ink-muted">
-                    Слева — рацион на сегодня из ответа модели; справа — полный план месяца. У каждого
-                    дня в ответе первая строка: день недели и дата по-русски; форматирование без
-                    Markdown.
+                    ИИ строит примерный план на 31 день подряд, начиная с сегодняшней даты на вашем
+                    устройстве. Слева можно открыть любой день из сохранённого периода; справа —
+                    полный текст ответа модели по дням (без Markdown).
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="flex w-full min-w-0 items-center gap-2 rounded-xl border border-border bg-page px-2 py-1.5 sm:w-auto">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="shrink-0 px-2"
-                      aria-label="Предыдущий месяц"
-                      onClick={() => setGenerateMonth((m) => addMonthsYm(m, -1))}
-                    >
-                      ‹
-                    </Button>
-                    <span className="min-w-0 flex-1 truncate text-center text-sm font-semibold text-ink-heading">
-                      {monthTitleRu(generateMonth)}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      className="shrink-0 px-2"
-                      aria-label="Следующий месяц"
-                      onClick={() => setGenerateMonth((m) => addMonthsYm(m, 1))}
-                    >
-                      ›
-                    </Button>
-                  </div>
                   <Button
                     variant="primary"
                     disabled={generate.isPending}
@@ -266,7 +317,7 @@ export function RationPage() {
                           persistRationRaw(uid, null);
                           qc.setQueryData(rationStoredQueryKey(uid), null);
                         }
-                        setGenerateMonth(monthFromToday());
+                        setSelectedIso(todayLocalISO());
                       }}
                     >
                       Очистить
@@ -278,7 +329,7 @@ export function RationPage() {
             </div>
 
             <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-[min(100%,28rem)] xl:w-[32rem]">
-              <RationAiFullResponsePanel fullText={fullPlanText} monthLabel={fullPlanMonthTitle} />
+              <RationAiFullResponsePanel fullText={fullPlanText} periodLabel={fullPlanPeriodLabel} />
             </aside>
           </div>
         </div>

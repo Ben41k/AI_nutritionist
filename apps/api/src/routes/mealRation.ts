@@ -9,38 +9,46 @@ import { createChatCompletion, createEmbedding } from '../lib/openrouter.js';
 import { searchSimilarChunks } from '../lib/vectorSearch.js';
 
 const postBodySchema = z.object({
-  month: z.string().regex(/^\d{4}-\d{2}$/),
+  /** Локальная дата клиента (YYYY-MM-DD), с которой начинается скользящий период. */
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
-function parseMonthParts(month: string): { y: number; m: number } | null {
-  const m = /^(\d{4})-(\d{2})$/.exec(month);
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  if (!y || mo < 1 || mo > 12) return null;
-  return { y, m: mo };
-}
+const ROLLING_PLAN_DAY_COUNT = 31;
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0');
 }
 
-function listIsoDatesInMonth(month: string): string[] {
-  const p = parseMonthParts(month);
-  if (!p) return [];
-  const last = new Date(p.y, p.m, 0).getDate();
-  const ym = `${p.y}-${pad2(p.m)}`;
+function parseIsoLocalParts(iso: string): { y: number; m: number; d: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return { y, m: mo, d };
+}
+
+function listIsoDatesRolling(startDate: string, count: number): string[] {
+  const p = parseIsoLocalParts(startDate);
+  if (!p || count < 1) return [];
   const out: string[] = [];
-  for (let d = 1; d <= last; d++) {
-    out.push(`${ym}-${pad2(d)}`);
+  const base = new Date(p.y, p.m - 1, p.d);
+  for (let i = 0; i < count; i += 1) {
+    const cur = new Date(base);
+    cur.setDate(base.getDate() + i);
+    out.push(`${cur.getFullYear()}-${pad2(cur.getMonth() + 1)}-${pad2(cur.getDate())}`);
   }
   return out;
 }
 
-function buildJsonMonthlyPrompt(params: {
+function buildJsonRollingPrompt(params: {
   profileSummary: string;
   knowledgeContext: string;
-  month: string;
+  periodStart: string;
+  periodEnd: string;
   dates: string[];
 }): { role: 'system' | 'user' | 'assistant'; content: string }[] {
   const kb = params.knowledgeContext.trim();
@@ -55,7 +63,7 @@ function buildJsonMonthlyPrompt(params: {
         'Use double quotes for all JSON keys and string values. Escape newlines inside strings as \\n.',
         'JSON shape exactly:',
         '{"preamble":"string in Russian, short intro and calorie hint if possible","days":{"YYYY-MM-DD":"string in Russian for that day"}}',
-        `The keys in "days" must be exactly these calendar dates for month ${params.month}: ${dateList}`,
+        `The keys in "days" must be exactly these consecutive calendar dates from ${params.periodStart} through ${params.periodEnd} (inclusive): ${dateList}`,
         'Every listed date must appear as a key in "days".',
         'For each "days" value: the string MUST start with its first line giving the weekday name and the calendar date in Russian that matches the JSON key (e.g. key 2026-04-15 → first line like «понедельник, 15 апреля 2026» or «Понедельник, 15.04.2026»), then a blank line, then 4–10 short lines: breakfast, lunch, dinner, one snack — concrete foods; respect allergies and preferences from the profile strictly.',
         'Do not use Markdown anywhere in "preamble" or in any "days" value: no # headings, no ** or __ emphasis, no bullet lists with - or *, no numbered markdown lists, no [text](url) links, no code fences. Use plain Russian text and line breaks only.',
@@ -71,7 +79,7 @@ function buildJsonMonthlyPrompt(params: {
     },
     {
       role: 'user',
-      content: `Составь примерный рацион на календарный месяц ${params.month} в формате JSON, как указано в системных инструкциях.`,
+      content: `Составь примерный рацион на каждый из перечисленных дней подряд (скользящий период с ${params.periodStart} по ${params.periodEnd}) в формате JSON, как указано в системных инструкциях.`,
     },
   ];
 }
@@ -119,10 +127,16 @@ export async function registerMealRationRoutes(app: FastifyInstance): Promise<vo
         sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid body', parsedBody.error.flatten());
         return;
       }
-      const { month } = parsedBody.data;
-      const dates = listIsoDatesInMonth(month);
+      const { startDate } = parsedBody.data;
+      const dates = listIsoDatesRolling(startDate, ROLLING_PLAN_DAY_COUNT);
       if (dates.length === 0) {
-        sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid month');
+        sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid startDate');
+        return;
+      }
+      const periodStart = dates[0];
+      const periodEnd = dates[dates.length - 1];
+      if (periodStart === undefined || periodEnd === undefined) {
+        sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid startDate');
         return;
       }
 
@@ -149,7 +163,7 @@ export async function registerMealRationRoutes(app: FastifyInstance): Promise<vo
       let knowledgeContext = '';
       try {
         const q =
-          'Сбалансированный рацион питания на месяц: калорийность, БЖУ, примеры завтраков обедов ужинов, ограничения по аллергиям';
+          'Сбалансированный рацион питания на несколько недель подряд: калорийность, БЖУ, примеры завтраков обедов ужинов, ограничения по аллергиям';
         const emb = await createEmbedding(q);
         const chunks = await searchSimilarChunks(prisma, emb, 6);
         knowledgeContext = chunks.map((c) => c.content).join('\n---\n');
@@ -157,10 +171,11 @@ export async function registerMealRationRoutes(app: FastifyInstance): Promise<vo
         /* optional KB */
       }
 
-      const messages = buildJsonMonthlyPrompt({
+      const messages = buildJsonRollingPrompt({
         profileSummary,
         knowledgeContext,
-        month,
+        periodStart,
+        periodEnd,
         dates,
       });
 
@@ -198,7 +213,8 @@ export async function registerMealRationRoutes(app: FastifyInstance): Promise<vo
           : null;
 
       await reply.send({
-        month,
+        periodStart,
+        periodEnd,
         preamble,
         days: merged,
         retrievalUsed: knowledgeContext.length > 0,
