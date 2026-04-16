@@ -13,7 +13,6 @@ const mealCreate = z.object({
   occurredAt: z.string().datetime(),
   description: z.string().min(1).max(4000),
   portionEstimate: z.nativeEnum(PortionEstimate).optional(),
-  analyzeWithModel: z.boolean().optional(),
 });
 
 const optionalNumber = z.preprocess((val) => {
@@ -132,13 +131,7 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
     {
       config: {
         rateLimit: {
-          max: async (req) => {
-            const parsed = mealCreate.safeParse(req.body);
-            if (!parsed.success) return Math.max(config.apiMealsPostNonLlmMax, config.apiLlmRateLimitMax);
-            return parsed.data.analyzeWithModel
-              ? config.apiLlmRateLimitMax
-              : config.apiMealsPostNonLlmMax;
-          },
+          max: async () => config.apiLlmRateLimitMax,
           timeWindow: config.apiLlmRateLimitWindow,
           hook: 'preHandler',
           keyGenerator: openRouterRateLimitKey,
@@ -157,18 +150,18 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
       sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid body', parsed.error.flatten());
       return;
     }
-    const { occurredAt, description, portionEstimate, analyzeWithModel } = parsed.data;
+    const { occurredAt, description, portionEstimate } = parsed.data;
 
     let structuredEstimate: unknown = undefined;
     let isModelEstimate = false;
 
-    if (analyzeWithModel) {
+    try {
       const raw = await createChatCompletion({
         messages: [
           {
             role: 'system',
             content:
-              'You estimate meal nutrition from a short user description. Reply ONLY valid JSON with keys: caloriesKcal (number), proteinG, fatG, carbsG, notes (string). Values are rough estimates, not lab analysis.',
+              'You estimate meal nutrition from a short user description (any input language). Reply ONLY valid JSON with keys: caloriesKcal (number), proteinG, fatG, carbsG, notes (string). Numbers are rough estimates, not lab analysis. The "notes" field MUST be 1–3 short sentences entirely in Russian for the end user (portions, uncertainty, brief tips). Use Russian only in "notes", no English there.',
           },
           { role: 'user', content: description },
         ],
@@ -184,6 +177,8 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
       } catch {
         // leave structured empty
       }
+    } catch {
+      // сохраняем приём без оценки, если OpenRouter недоступен
     }
 
     const meal = await prisma.mealEntry.create({

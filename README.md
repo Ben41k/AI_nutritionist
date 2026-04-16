@@ -68,7 +68,7 @@
 ## Лимиты и приватность (MVP)
 
 - Глобальный HTTP rate limit: `API_RATE_LIMIT_MAX` (на IP, в минуту). Ответ `429` с `error.code` **`RATE_LIMITED`**.
-- Отдельные лимиты на вызовы OpenRouter: `API_LLM_RATE_LIMIT_MAX`, `API_LLM_RATE_LIMIT_WINDOW` (чат, анализ приёма с `analyzeWithModel`); для индексации БЗ: `API_KNOWLEDGE_INDEX_RATE_LIMIT_MAX`, `API_KNOWLEDGE_INDEX_RATE_LIMIT_WINDOW`. См. [apps/api/.env.example](apps/api/.env.example).
+- Отдельные лимиты на вызовы OpenRouter: `API_LLM_RATE_LIMIT_MAX`, `API_LLM_RATE_LIMIT_WINDOW` (чат и POST `/meals` с оценкой приёма через модель); для индексации БЗ: `API_KNOWLEDGE_INDEX_RATE_LIMIT_MAX`, `API_KNOWLEDGE_INDEX_RATE_LIMIT_WINDOW`. См. [apps/api/.env.example](apps/api/.env.example).
 
 ## Примечание по эмбеддингам
 

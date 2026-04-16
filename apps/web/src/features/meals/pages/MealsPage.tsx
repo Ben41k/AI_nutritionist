@@ -58,15 +58,14 @@ function parseStructuredEstimate(raw: unknown): StructuredEstimate | null {
   };
 }
 
-function hasReadableMacros(raw: unknown): boolean {
+function hasMacroNumbers(raw: unknown): boolean {
   const est = parseStructuredEstimate(raw);
   if (!est) return false;
   return (
     est.caloriesKcal !== undefined ||
     est.proteinG !== undefined ||
     est.fatG !== undefined ||
-    est.carbsG !== undefined ||
-    Boolean(est.notes?.length)
+    est.carbsG !== undefined
   );
 }
 
@@ -108,11 +107,6 @@ function MealMacrosPanel({ raw }: { raw: unknown }) {
             </Fragment>
           ))}
         </dl>
-      ) : null}
-      {est?.notes ? (
-        <p className="mt-2 border-t border-border/40 pt-2 text-xs leading-relaxed text-ink-body">
-          {est.notes}
-        </p>
       ) : null}
     </div>
   );
@@ -285,8 +279,6 @@ export function MealsPage() {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   });
-  const [analyze, setAnalyze] = useState(false);
-
   const { data: profileData, isLoading: profileLoading } = useQuery({
     queryKey: ['profile'],
     queryFn: () => apiJson<{ profile: Profile }>('/profile'),
@@ -356,7 +348,6 @@ export function MealsPage() {
         body: JSON.stringify({
           occurredAt,
           description,
-          analyzeWithModel: analyze,
         }),
       });
     },
@@ -372,7 +363,6 @@ export function MealsPage() {
       });
       void qc.invalidateQueries({ queryKey });
       setDescription('');
-      setAnalyze(false);
     },
   });
 
@@ -497,101 +487,118 @@ export function MealsPage() {
         </div>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-      <Card>
-        <h2 className="mb-4 text-lg font-semibold text-ink-heading">Новый приём пищи</h2>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,20rem)_1fr] lg:items-start lg:gap-6">
+      <Card className="p-4">
         <form
-          className="space-y-3"
+          className="space-y-2"
           onSubmit={(e) => {
             e.preventDefault();
             if (create.isPending || !description.trim()) return;
             create.mutate();
           }}
         >
-          <p className="rounded-lg border border-border/50 bg-page/50 px-3 py-2 text-xs leading-relaxed text-ink-muted">
-            Запись добавится на{' '}
-            <span className="font-semibold text-ink-heading">{formatShortDay(date)}</span>. Другой
-            день выберите в блоке «День в дневнике» выше.
+          <div className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+            <h2 className="text-sm font-semibold text-ink-heading">Новый приём</h2>
+            <label className="flex items-center gap-1.5 text-[11px] font-medium text-ink-muted">
+              Время
+              <Input
+                className="h-9 w-[6.75rem] rounded-md px-2 py-1 text-sm"
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+              />
+            </label>
+          </div>
+          <p className="text-[11px] leading-snug text-ink-muted">
+            Запись на <span className="font-medium text-ink-body">{formatShortDay(date)}</span> — день
+            меняется вверху.
           </p>
-          <label className="text-xs font-semibold text-ink-muted">
-            Время
-            <Input
-              className="mt-1 rounded-md"
-              type="time"
-              value={time}
-              onChange={(e) => setTime(e.target.value)}
-            />
+          <label className="sr-only" htmlFor="meal-description">
+            Описание приёма пищи
           </label>
-          <label className="text-xs font-semibold text-ink-muted">
-            Описание
-            <Textarea
-              className="mt-1 rounded-md"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onKeyDown={(e) =>
-                handleEnterSubmit(e, !create.isPending && Boolean(description.trim()), () =>
-                  create.mutate(),
-                )
-              }
-            />
-          </label>
-          <label className="flex items-center gap-2 text-sm text-ink-body">
-            <input
-              type="checkbox"
-              checked={analyze}
-              onChange={(e) => setAnalyze(e.target.checked)}
-            />
-            Оценить БЖУ через модель
-          </label>
-          {create.isError ? <p className="text-sm text-red-600">Не удалось сохранить</p> : null}
-          <Button
-            type="submit"
-            disabled={create.isPending || !description.trim()}
-          >
-            {create.isPending ? 'Сохранение…' : 'Добавить'}
-          </Button>
+          <Textarea
+            id="meal-description"
+            rows={2}
+            placeholder="Кратко: что и сколько…"
+            className="min-h-0 rounded-md py-2 text-sm"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            onKeyDown={(e) =>
+              handleEnterSubmit(e, !create.isPending && Boolean(description.trim()), () =>
+                create.mutate(),
+              )
+            }
+          />
+          <div className="flex justify-end pt-0.5">
+            <Button
+              type="submit"
+              className="shrink-0 px-4 py-2 text-sm"
+              disabled={create.isPending || !description.trim()}
+            >
+              {create.isPending ? 'Сохранение…' : 'Добавить'}
+            </Button>
+          </div>
+          {create.isError ? <p className="text-xs text-red-600">Не удалось сохранить</p> : null}
         </form>
       </Card>
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink-heading">Записи за этот день</h2>
         {isLoading ? <p className="text-ink-muted">Загрузка…</p> : null}
         <ul className="space-y-3">
-          {(data?.meals ?? []).map((m) => (
-            <li
-              key={m.id}
-              className="flex gap-3 rounded-md border border-border px-3 py-3 sm:px-4"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="text-xs text-ink-muted">
-                  {new Date(m.occurredAt).toLocaleString()}
+          {(data?.meals ?? []).map((m) => {
+            const est = parseStructuredEstimate(m.structuredEstimate);
+            const showModelFooter = m.isModelEstimate || Boolean(est?.notes?.trim());
+            return (
+              <li
+                key={m.id}
+                className="flex flex-col gap-2 rounded-md border border-border px-3 py-3 sm:px-4"
+              >
+                <div className="flex gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-ink-muted">
+                      {new Date(m.occurredAt).toLocaleString()}
+                    </div>
+                    <div className="font-medium text-ink-heading">{m.description}</div>
+                    {hasMacroNumbers(m.structuredEstimate) ? (
+                      <MealMacrosPanel raw={m.structuredEstimate} />
+                    ) : m.isModelEstimate ? (
+                      <p className="mt-2 text-sm text-ink-muted">
+                        Оценка БЖУ недоступна: модель не вернула числовые значения для этой записи.
+                      </p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-start pt-0.5">
+                    <Button
+                      variant="ghost"
+                      className="px-2.5 py-2 text-primary hover:bg-primary-soft hover:text-primary-hover"
+                      disabled={remove.isPending || create.isPending}
+                      aria-label="Удалить запись о приёме пищи"
+                      onClick={() => {
+                        if (!window.confirm('Удалить эту запись из дневника?')) {
+                          return;
+                        }
+                        remove.mutate(m.id);
+                      }}
+                    >
+                      <TrashIcon className="size-5 shrink-0 opacity-90" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="font-medium text-ink-heading">{m.description}</div>
-                {hasReadableMacros(m.structuredEstimate) ? (
-                  <MealMacrosPanel raw={m.structuredEstimate} />
-                ) : m.isModelEstimate ? (
-                  <p className="mt-2 text-sm text-ink-muted">
-                    Оценка БЖУ недоступна: модель не вернула данные для этой записи.
-                  </p>
+                {showModelFooter ? (
+                  <div className="border-t border-border/45 pt-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                      Комментарий модели
+                    </p>
+                    {est?.notes?.trim() ? (
+                      <p className="mt-1 text-xs leading-relaxed text-ink-body">{est.notes}</p>
+                    ) : (
+                      <p className="mt-1 text-xs text-ink-muted">Комментарий не сформулирован.</p>
+                    )}
+                  </div>
                 ) : null}
-              </div>
-              <div className="flex shrink-0 items-start pt-0.5">
-                <Button
-                  variant="ghost"
-                  className="px-2.5 py-2 text-primary hover:bg-primary-soft hover:text-primary-hover"
-                  disabled={remove.isPending || create.isPending}
-                  aria-label="Удалить запись о приёме пищи"
-                  onClick={() => {
-                    if (!window.confirm('Удалить эту запись из дневника?')) {
-                      return;
-                    }
-                    remove.mutate(m.id);
-                  }}
-                >
-                  <TrashIcon className="size-5 shrink-0 opacity-90" />
-                </Button>
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
         {remove.isError ? (
           <p className="mt-3 text-sm text-red-600">
