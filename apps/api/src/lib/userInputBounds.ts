@@ -16,9 +16,10 @@ export const USER_INPUT = {
     macroG: { min: 0, max: 800 },
     notesMaxChars: 2000,
   },
+  /** За один запрос: прибавить или убрать воду, мл (знак ±, не ноль). */
   waterAddMl: { min: 50, max: 2000 },
-  /** Верхняя граница учтённой воды за календарный день (защита от накрутки) */
-  waterDailyTotalCapMl: 50_000,
+  /** Максимум учтённой воды за календарный день (защита от ошибок ввода). */
+  waterDailyRecordedMaxMl: 5000,
   neckCm: { min: 20, max: 75 },
   waistCm: { min: 35, max: 200 },
   hipsCm: { min: 35, max: 200 },

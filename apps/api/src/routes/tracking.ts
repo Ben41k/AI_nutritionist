@@ -22,7 +22,17 @@ const weightPost = z.object({
 
 const waterPost = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  addMl: z.number().int().min(USER_INPUT.waterAddMl.min).max(USER_INPUT.waterAddMl.max),
+  addMl: z
+    .number()
+    .int()
+    .refine((n) => n !== 0, { message: 'addMl must not be 0' })
+    .refine(
+      (n) => {
+        const a = Math.abs(n);
+        return a >= USER_INPUT.waterAddMl.min && a <= USER_INPUT.waterAddMl.max;
+      },
+      { message: 'addMl must be between ±50 and ±2000 ml' },
+    ),
 });
 
 const measurementPost = z.object({
@@ -141,18 +151,21 @@ export async function registerTrackingRoutes(app: FastifyInstance): Promise<void
       sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid date');
       return;
     }
+    const add = parsed.data.addMl;
+    const cap = USER_INPUT.waterDailyRecordedMaxMl;
     const row = await prisma.dailyWater.upsert({
       where: { userId_day: { userId: u.sub, day } },
-      create: { userId: u.sub, day, totalMl: parsed.data.addMl },
-      update: { totalMl: { increment: parsed.data.addMl } },
+      create: { userId: u.sub, day, totalMl: Math.max(0, add) },
+      update: { totalMl: { increment: add } },
     });
     let totalMl = row.totalMl;
-    if (totalMl > USER_INPUT.waterDailyTotalCapMl) {
-      const capped = await prisma.dailyWater.update({
+    const clamped = Math.max(0, Math.min(totalMl, cap));
+    if (clamped !== totalMl) {
+      const fixed = await prisma.dailyWater.update({
         where: { userId_day: { userId: u.sub, day } },
-        data: { totalMl: USER_INPUT.waterDailyTotalCapMl },
+        data: { totalMl: clamped },
       });
-      totalMl = capped.totalMl;
+      totalMl = fixed.totalMl;
     }
     await reply.send({ day: row.day.toISOString().slice(0, 10), totalMl });
   });

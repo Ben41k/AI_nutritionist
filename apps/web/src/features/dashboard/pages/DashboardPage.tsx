@@ -23,7 +23,7 @@ import {
   type Sex,
 } from '@/shared/lib/nutritionMetrics';
 import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
-import { USER_INPUT, inRange, parseFiniteNumber } from '@/shared/lib/userInputBounds';
+import { USER_INPUT, clamp, inRange, parseFiniteNumber } from '@/shared/lib/userInputBounds';
 
 type Profile = {
   id: string;
@@ -702,6 +702,7 @@ export function DashboardPage() {
   const [waist, setWaist] = useState('');
   const [hips, setHips] = useState('');
   const [measurementErr, setMeasurementErr] = useState<string | null>(null);
+  const [waterAdjustErr, setWaterAdjustErr] = useState<string | null>(null);
 
   const { data: profileData, isLoading: profileLoading } = useQuery({
     queryKey: ['profile'],
@@ -762,13 +763,19 @@ export function DashboardPage() {
     },
   });
 
-  const addWater = useMutation({
+  const adjustWater = useMutation({
     mutationFn: (addMl: number) =>
       apiJson<{ totalMl: number }>('/tracking/water', {
         method: 'POST',
         body: JSON.stringify({ date: todayISO(), addMl }),
       }),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['tracking', 'water'] }),
+    onSuccess: () => {
+      setWaterAdjustErr(null);
+      void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
+    },
+    onError: () => {
+      setWaterAdjustErr('Не удалось сохранить воду');
+    },
   });
 
   const addMeasurement = useMutation({
@@ -980,25 +987,38 @@ export function DashboardPage() {
     [measurements, dates14],
   );
 
+  /** Последняя по времени талия среди записей, где она указана (не порядок элементов в ответе API). */
   const latestWaist = useMemo(() => {
+    let bestT = -Infinity;
+    let bestV: number | null = null;
     for (const m of measurements) {
-      if (m.waistCm != null) return m.waistCm;
+      if (m.waistCm == null) continue;
+      const t = Date.parse(m.recordedAt);
+      if (!Number.isFinite(t)) continue;
+      if (t >= bestT) {
+        bestT = t;
+        bestV = m.waistCm;
+      }
     }
-    return null;
+    return bestV;
   }, [measurements]);
 
+  /**
+   * Для каждого параметра — разница между двумя последними замерами, где это поле заполнено
+   * (раньше сравнивались только два последних ряда целиком, из‑за чего при «шея в одной записи,
+   * талия в другой» всё становилось «не задано»).
+   */
   const measDynamics = useMemo(() => {
+    if (measurements.length === 0) return null;
     const sorted = [...measurements].sort(
       (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime(),
     );
-    const cur = sorted[0];
-    const prev = sorted[1];
-    if (!cur || !prev) return null;
     const fmt = (field: 'neckCm' | 'waistCm' | 'hipsCm') => {
-      const a = cur[field];
-      const b = prev[field];
-      if (a == null || b == null) return null;
-      const d = Math.round((a - b) * 10) / 10;
+      const withVal = sorted.filter((m) => m[field] != null);
+      if (withVal.length < 2) return null;
+      const cur = withVal[0]![field]!;
+      const prev = withVal[1]![field]!;
+      const d = Math.round((cur - prev) * 10) / 10;
       const sign = d > 0 ? '+' : '';
       return `${sign}${d} см`;
     };
@@ -1041,13 +1061,15 @@ export function DashboardPage() {
     };
   }, [profile, latestWeight, dailyCalories]);
 
-  const waterTodayMl = waterData?.days.find((d) => d.date === todayISO())?.totalMl ?? 0;
+  const waterTodayRaw = waterData?.days.find((d) => d.date === todayISO())?.totalMl ?? 0;
+  const waterTodayMl = clamp(waterTodayRaw, 0, USER_INPUT.waterDailyRecordedMaxMl);
 
   const dates7Key = dates7.join(',');
   const waterWeekTotals = useMemo(() => {
     const parts = dates7Key.split(',');
     const byDate = new Map((waterData?.days ?? []).map((d) => [d.date, d.totalMl]));
-    return parts.map((d) => byDate.get(d) ?? 0);
+    const cap = USER_INPUT.waterDailyRecordedMaxMl;
+    return parts.map((d) => clamp(byDate.get(d) ?? 0, 0, cap));
   }, [waterData?.days, dates7Key]);
 
   if (profileLoading) return <p className="text-ink-muted">Загрузка…</p>;
@@ -1090,6 +1112,22 @@ export function DashboardPage() {
   const waterGoal = profile.waterGoalMl ?? 2000;
   const waterPct =
     waterGoal > 0 ? Math.min(100, Math.round((waterTodayMl / waterGoal) * 100)) : null;
+
+  const waterDailyCap = USER_INPUT.waterDailyRecordedMaxMl;
+  const atWaterDailyCap = waterTodayRaw >= waterDailyCap;
+  const atWaterZero = waterTodayRaw <= 0;
+
+  const applyWaterDelta = (delta: number) => {
+    setWaterAdjustErr(null);
+    const abs = Math.abs(delta);
+    if (delta === 0 || abs < USER_INPUT.waterAddMl.min || abs > USER_INPUT.waterAddMl.max) return;
+    if (delta > 0 && waterTodayRaw >= waterDailyCap) {
+      setWaterAdjustErr('За сутки в учёте не больше 5 л.');
+      return;
+    }
+    if (delta < 0 && waterTodayRaw <= 0) return;
+    adjustWater.mutate(delta);
+  };
 
   const tdeeForCharts = analytics?.tdee ?? null;
   const targetKcalForCharts =
@@ -1211,7 +1249,7 @@ export function DashboardPage() {
               ? `${whtrVal.toFixed(3)} (${whtrVal <= 0.5 ? 'в пределах ориентира до 0,5' : 'выше ориентира 0,5'})`
               : METRIC_EMPTY
           }
-          description="Талия / рост: коэффициент распределения жировой ткани (норма до 0,5)."
+          description="Талия / рост из профиля: нужны рост в профиле и талия в замерах (норма до 0,5)."
           detail={<WhtrTrendSparkline dates={dates14} values={whtrSeries14} />}
         />
       </Section>
@@ -1271,7 +1309,7 @@ export function DashboardPage() {
               ? `${waterTodayMl} / ${waterGoal} мл (${waterPct}%)`
               : METRIC_EMPTY
           }
-          description="Выпитая вода за сутки относительно нормы из профиля."
+          description="Выпитая вода за сутки относительно нормы из профиля; в учёте не более 5 л за сутки."
           detail={
             <WaterWeekSparkline dates={dates7} dayTotals={waterWeekTotals} goalMl={waterGoal} />
           }
@@ -1332,7 +1370,7 @@ export function DashboardPage() {
               METRIC_EMPTY
             )
           }
-          description="Сравнение двух последних замеров с данными по каждому параметру."
+          description="По двум последним записям, где заполнен соответствующий параметр (шея, талия или бёдра)."
           detail={
             <BodyVolumesSparkline
               dates={dates14}
@@ -1425,16 +1463,46 @@ export function DashboardPage() {
         <Card>
           <h3 className="mb-3 text-sm font-semibold text-ink-heading">Вода за сегодня</h3>
           <p className="mb-3 text-xs text-ink-muted">
-            Норма: {waterGoal} мл (задаётся в профиле). Сейчас: {waterTodayMl} мл.
+            Норма: {waterGoal} мл (задаётся в профиле). Сейчас: {waterTodayMl} мл (в учёте максимум{' '}
+            {waterDailyCap / 1000} л за сутки).
           </p>
           <div className="flex flex-wrap gap-2">
-            <Button variant="pill" onClick={() => addWater.mutate(250)} disabled={addWater.isPending}>
+            <Button
+              variant="pill"
+              type="button"
+              onClick={() => applyWaterDelta(250)}
+              disabled={adjustWater.isPending || atWaterDailyCap}
+            >
               +250 мл
             </Button>
-            <Button variant="pill" onClick={() => addWater.mutate(500)} disabled={addWater.isPending}>
+            <Button
+              variant="pill"
+              type="button"
+              onClick={() => applyWaterDelta(500)}
+              disabled={adjustWater.isPending || atWaterDailyCap}
+            >
               +500 мл
             </Button>
+            <Button
+              variant="pill"
+              type="button"
+              className="border-border/80"
+              onClick={() => applyWaterDelta(-250)}
+              disabled={adjustWater.isPending || atWaterZero}
+            >
+              −250 мл
+            </Button>
+            <Button
+              variant="pill"
+              type="button"
+              className="border-border/80"
+              onClick={() => applyWaterDelta(-500)}
+              disabled={adjustWater.isPending || atWaterZero}
+            >
+              −500 мл
+            </Button>
           </div>
+          {waterAdjustErr ? <p className="mt-2 text-xs text-red-600">{waterAdjustErr}</p> : null}
         </Card>
         <Card>
           <h3 className="mb-3 text-sm font-semibold text-ink-heading">Новый замер</h3>
