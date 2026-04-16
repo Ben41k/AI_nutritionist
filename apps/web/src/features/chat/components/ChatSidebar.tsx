@@ -26,6 +26,7 @@ export function ChatSidebar() {
       apiJson<{ thread: Thread }>('/chat/threads', { method: 'POST', body: JSON.stringify({}) }),
     onSuccess: (res) => {
       void qc.invalidateQueries({ queryKey: ['chat-threads'] });
+      toast.success('Новый чат создан');
       navigate(chatPaths.thread(res.thread.id));
     },
   });
@@ -36,6 +37,7 @@ export function ChatSidebar() {
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: ['chat-threads'] });
       void qc.removeQueries({ queryKey: ['chat-messages', id] });
+      toast.success('Чат удалён');
       if (activeThreadId === id) {
         navigate(chatPaths.root);
       }

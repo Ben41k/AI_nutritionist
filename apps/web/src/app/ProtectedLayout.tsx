@@ -42,6 +42,7 @@ export function ProtectedLayout() {
     setLoggingOut(true);
     try {
       await apiJson('/auth/logout', { method: 'POST' });
+      toast.success('Вы вышли из аккаунта');
     } catch (err) {
       console.error('Logout failed', err);
       toast.error(logoutErrorMessage(err));

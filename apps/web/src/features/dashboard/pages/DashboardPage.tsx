@@ -759,6 +759,7 @@ export function DashboardPage() {
       void qc.invalidateQueries({ queryKey: ['tracking', 'weight'] });
       void qc.invalidateQueries({ queryKey: ['profile'] });
       setWeightInput('');
+      toast.success('Вес сохранён');
     },
     onError: (e) =>
       toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить вес'),
@@ -772,6 +773,7 @@ export function DashboardPage() {
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
+      toast.success('Вода обновлена', { duration: 2800 });
     },
     onError: (e) =>
       toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить воду'),
@@ -785,6 +787,7 @@ export function DashboardPage() {
       setNeck('');
       setWaist('');
       setHips('');
+      toast.success('Замер добавлен');
     },
     onError: (e) =>
       toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить замер'),

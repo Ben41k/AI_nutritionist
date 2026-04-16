@@ -28,6 +28,7 @@ export function RegisterPage() {
         }),
       });
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
+      toast.success('Регистрация прошла успешно');
       nav('/');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Не удалось зарегистрироваться');

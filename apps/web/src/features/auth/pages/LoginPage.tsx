@@ -28,6 +28,7 @@ export function LoginPage() {
         }),
       });
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
+      toast.success('Вход выполнен');
       nav('/');
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : 'Не удалось войти');

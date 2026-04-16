@@ -78,6 +78,7 @@ export function ChatThreadPage() {
       qc.setQueryData(['chat-thread', threadId], { thread: res.thread });
       void qc.invalidateQueries({ queryKey: ['chat-threads'] });
       setEditingTitle(false);
+      toast.success('Название чата сохранено');
     },
     onError: (e) =>
       toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить название'),
@@ -150,6 +151,7 @@ export function ChatThreadPage() {
       return apiJson<{ ok: boolean }>(`/chat/threads/${threadId}`, { method: 'DELETE' });
     },
     onSuccess: () => {
+      toast.success('Чат удалён');
       void qc.invalidateQueries({ queryKey: ['chat-threads'] });
       void qc.removeQueries({ queryKey: ['chat-messages', threadId] });
       void qc.removeQueries({ queryKey: ['chat-thread', threadId] });

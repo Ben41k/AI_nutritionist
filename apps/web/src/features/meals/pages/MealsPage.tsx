@@ -378,6 +378,7 @@ export function MealsPage() {
       void qc.invalidateQueries({ queryKey });
       void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
       setDescription('');
+      toast.success('Приём пищи добавлен');
     },
     onError: (e) =>
       toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить приём пищи'),
@@ -389,6 +390,7 @@ export function MealsPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey });
       void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
+      toast.success('Запись удалена');
     },
     onError: (e) =>
       toast.error(e instanceof ApiError ? e.message : 'Не удалось удалить запись'),

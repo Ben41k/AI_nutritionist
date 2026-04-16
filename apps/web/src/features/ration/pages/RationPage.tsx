@@ -148,6 +148,7 @@ export function RationPage() {
       const sel =
         t >= data.periodStart && t <= data.periodEnd ? t : data.periodStart;
       setSelectedIso(sel);
+      toast.success('Рацион сформирован и сохранён');
     },
   });
 

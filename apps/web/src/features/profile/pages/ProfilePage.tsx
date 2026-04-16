@@ -109,7 +109,10 @@ function ProfileForm({ profile }: { profile: Profile }) {
         body: JSON.stringify(payload),
       });
     },
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ['profile'] }),
+    onSuccess: () => {
+      toast.success('Профиль сохранён');
+      void qc.invalidateQueries({ queryKey: ['profile'] });
+    },
     onError: (e) =>
       toast.error(
         e instanceof ApiError ? e.message : 'Не удалось сохранить профиль',
@@ -326,7 +329,6 @@ function ProfileForm({ profile }: { profile: Profile }) {
           onChange={(e) => setForm({ ...form, preferences: e.target.value })}
         />
       </label>
-      {save.isSuccess ? <p className="mt-3 text-sm text-primary">Сохранено</p> : null}
       <Button type="submit" className="mt-6" disabled={save.isPending}>
         {save.isPending ? 'Сохранение…' : 'Сохранить'}
       </Button>

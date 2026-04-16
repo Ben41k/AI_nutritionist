@@ -85,6 +85,7 @@ export function AdminKnowledgePage() {
       setTitle('');
       setContent('');
       setLastSavedChunks(res.document.chunks);
+      toast.success(`Документ добавлен, проиндексировано ${res.document.chunks} чанков`);
     },
     onError: (e) => {
       toast.error(e instanceof ApiError ? e.message : 'Ошибка');
@@ -109,6 +110,7 @@ export function AdminKnowledgePage() {
       void qc.invalidateQueries({ queryKey: ['admin-docs'] });
       void qc.invalidateQueries({ queryKey: ['admin-doc', editingId] });
       setLastSavedChunks(res.document.chunks);
+      toast.success(`Документ сохранён, в индексе ${res.document.chunks} чанков`);
     },
     onError: (e) => {
       toast.error(e instanceof ApiError ? e.message : 'Ошибка');
@@ -125,9 +127,10 @@ export function AdminKnowledgePage() {
         fd,
       );
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       void qc.invalidateQueries({ queryKey: ['admin-docs'] });
       setUploadTitle('');
+      toast.success(`Файл проиндексирован: ${res.document.chunks} чанков`);
     },
     onError: (e) => {
       toast.error(e instanceof ApiError ? e.message : 'Ошибка загрузки');
@@ -138,6 +141,7 @@ export function AdminKnowledgePage() {
     mutationFn: (id: string) => apiJson(`/admin/knowledge/documents/${id}`, { method: 'DELETE' }),
     onSuccess: (_, id) => {
       void qc.invalidateQueries({ queryKey: ['admin-docs'] });
+      toast.success('Документ удалён');
       if (editingId === id) {
         setEditingId(null);
         setLastSavedChunks(null);
@@ -186,11 +190,6 @@ export function AdminKnowledgePage() {
               )
             }
           />
-          {create.isSuccess && lastSavedChunks != null && !editingId ? (
-            <p className="mb-2 text-sm text-ink-muted">
-              Индексация: {lastSavedChunks} чанков (успех).
-            </p>
-          ) : null}
           <Button
             type="submit"
             disabled={create.isPending || !title.trim() || !content.trim()}
@@ -302,10 +301,7 @@ export function AdminKnowledgePage() {
                 }
               />
               {lastSavedChunks != null && !patch.isPending && !patch.isError ? (
-                <p className="text-sm text-ink-muted">
-                  Чанков в индексе: {lastSavedChunks}
-                  {patch.isSuccess ? ' · последнее сохранение успешно' : ''}
-                </p>
+                <p className="text-sm text-ink-muted">Чанков в индексе: {lastSavedChunks}</p>
               ) : null}
               <Button type="submit" disabled={patch.isPending || !canPatch}>
                 {patch.isPending ? 'Переиндексация…' : 'Сохранить'}
