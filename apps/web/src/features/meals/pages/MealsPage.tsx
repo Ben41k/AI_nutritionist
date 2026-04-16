@@ -22,6 +22,7 @@ import { USER_INPUT } from '@/shared/lib/userInputBounds';
 type Meal = {
   id: string;
   occurredAt: string;
+  diaryLocalDate?: string | null;
   description: string;
   portionEstimate: string;
   structuredEstimate: unknown;
@@ -35,6 +36,7 @@ type StructuredEstimate = {
   proteinG?: number;
   fatG?: number;
   carbsG?: number;
+  fluidMl?: number;
   notes?: string;
 };
 
@@ -55,6 +57,7 @@ function parseStructuredEstimate(raw: unknown): StructuredEstimate | null {
     proteinG: num(o.proteinG),
     fatG: num(o.fatG),
     carbsG: num(o.carbsG),
+    fluidMl: num(o.fluidMl),
     notes: str(o.notes),
   };
 }
@@ -66,7 +69,8 @@ function hasMacroNumbers(raw: unknown): boolean {
     est.caloriesKcal !== undefined ||
     est.proteinG !== undefined ||
     est.fatG !== undefined ||
-    est.carbsG !== undefined
+    est.carbsG !== undefined ||
+    est.fluidMl !== undefined
   );
 }
 
@@ -84,6 +88,9 @@ function MealMacrosPanel({ raw }: { raw: unknown }) {
   }
   if (est?.carbsG !== undefined) {
     rows.push({ label: 'Углеводы', value: `${est.carbsG.toFixed(1)} г` });
+  }
+  if (est?.fluidMl !== undefined) {
+    rows.push({ label: 'Жидкость', value: `${Math.round(est.fluidMl)} мл (в суточной воде)` });
   }
 
   if (rows.length === 0 && !est?.notes) {
@@ -351,6 +358,7 @@ export function MealsPage() {
         body: JSON.stringify({
           occurredAt,
           description: desc,
+          diaryLocalDate: date,
         }),
       });
     },
@@ -365,6 +373,7 @@ export function MealsPage() {
         return { meals };
       });
       void qc.invalidateQueries({ queryKey });
+      void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
       setDescription('');
     },
   });
@@ -374,6 +383,7 @@ export function MealsPage() {
       apiJson<{ ok: boolean }>(`/meals/${mealId}`, { method: 'DELETE' }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey });
+      void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
     },
   });
 
@@ -523,7 +533,7 @@ export function MealsPage() {
           </div>
           <p className="text-[11px] leading-snug text-ink-muted">
             Запись на <span className="font-medium text-ink-body">{formatShortDay(date)}</span> — день
-            меняется вверху.
+            меняется вверху. Напитки и жидкие блюда учитываются в суточной воде на дашборде (оценка модели).
           </p>
           <label className="sr-only" htmlFor="meal-description">
             Описание приёма пищи

@@ -20,6 +20,8 @@ export const USER_INPUT = {
   waterAddMl: { min: 50, max: 2000 },
   /** Максимум учтённой воды за календарный день (защита от ошибок ввода). */
   waterDailyRecordedMaxMl: 5000,
+  /** Верхняя граница fluidMl за один приём (оценка модели из дневника). */
+  mealFluidMlPerMealMax: 4000,
   neckCm: { min: 20, max: 75 },
   waistCm: { min: 35, max: 200 },
   hipsCm: { min: 35, max: 200 },

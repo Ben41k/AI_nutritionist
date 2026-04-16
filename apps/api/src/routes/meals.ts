@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { PortionEstimate } from '@prisma/client';
+import { PortionEstimate, type Prisma } from '@prisma/client';
 import { prisma } from '../prisma.js';
 import { config } from '../config.js';
 import { sendError } from '../lib/errors.js';
@@ -9,11 +9,14 @@ import { openRouterRateLimitKey } from '../lib/rateLimitKeys.js';
 import { clampLimit, decodeCursor, encodeCursor } from '../lib/cursorPagination.js';
 import { createChatCompletion } from '../lib/openrouter.js';
 import { USER_INPUT } from '../lib/userInputBounds.js';
+import { incrementDailyWater, parseWaterCalendarDayUtc } from '../lib/dailyWater.js';
 
 const mealCreate = z.object({
   occurredAt: z.string().datetime(),
   description: z.string().min(1).max(4000),
   portionEstimate: z.nativeEnum(PortionEstimate).optional(),
+  /** Календарный день дневника YYYY-MM-DD (как на клиенте); нужен для учёта воды из приёма */
+  diaryLocalDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 const optionalNumber = z.preprocess((val) => {
@@ -60,8 +63,30 @@ const structuredSchema = z.object({
     (v) => v === undefined || (v >= mealEstimate.macroG.min && v <= mealEstimate.macroG.max),
     { message: 'carbsG out of range' },
   ),
+  /** Оценка объёма жидкости (вода, чай, сок, молоко, бульон и т.п.), мл — для суточной метрики воды */
+  fluidMl: optionalNumber.refine(
+    (v) =>
+      v === undefined ||
+      (v >= 0 && v <= USER_INPUT.mealFluidMlPerMealMax),
+    { message: 'fluidMl out of range' },
+  ),
   notes: z.string().max(mealEstimate.notesMaxChars).optional(),
 });
+
+function fluidMlFromStructured(structured: unknown): number {
+  if (structured == null || typeof structured !== 'object') return 0;
+  const o = structured as Record<string, unknown>;
+  const v = o.fluidMl;
+  const cap = USER_INPUT.mealFluidMlPerMealMax;
+  if (typeof v === 'number' && Number.isFinite(v)) {
+    return Math.round(Math.max(0, Math.min(v, cap)));
+  }
+  if (typeof v === 'string') {
+    const n = Number(v.replace(',', '.'));
+    if (Number.isFinite(n)) return Math.round(Math.max(0, Math.min(n, cap)));
+  }
+  return 0;
+}
 
 function extractJsonObject(raw: string): string {
   let s = raw.trim();
@@ -166,7 +191,7 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
       sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid body', parsed.error.flatten());
       return;
     }
-    const { occurredAt, description, portionEstimate } = parsed.data;
+    const { occurredAt, description, portionEstimate, diaryLocalDate } = parsed.data;
 
     let structuredEstimate: unknown = undefined;
     let isModelEstimate = false;
@@ -177,7 +202,7 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
           {
             role: 'system',
             content:
-              'You estimate meal nutrition from a short user description (any input language). Reply ONLY valid JSON with keys: caloriesKcal (number), proteinG, fatG, carbsG, notes (string). Numbers are rough estimates, not lab analysis. The "notes" field MUST be 1–3 short sentences entirely in Russian for the end user (portions, uncertainty, brief tips). Use Russian only in "notes", no English there.',
+              'You estimate meal nutrition from a short user description (any input language). Reply ONLY valid JSON with keys: caloriesKcal (number), proteinG, fatG, carbsG, fluidMl (number), notes (string). Numbers are rough estimates, not lab analysis. "fluidMl" = total milliliters of hydrating fluids in this entry (plain water, tea, coffee, juice, milk, kefir, soup broth, smoothies with liquid, etc.); use 0 if the description is only solid food with negligible drink. The "notes" field MUST be 1–3 short sentences entirely in Russian for the end user (portions, uncertainty, brief tips). Use Russian only in "notes", no English there.',
           },
           { role: 'user', content: description },
         ],
@@ -187,7 +212,13 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
         const json = JSON.parse(extractJsonObject(raw)) as unknown;
         const checked = structuredSchema.safeParse(json);
         if (checked.success) {
-          structuredEstimate = checked.data;
+          const data: Record<string, unknown> = { ...checked.data };
+          if (data.fluidMl != null && typeof data.fluidMl === 'number') {
+            data.fluidMl = Math.round(
+              Math.max(0, Math.min(data.fluidMl, USER_INPUT.mealFluidMlPerMealMax)),
+            );
+          }
+          structuredEstimate = data;
           isModelEstimate = true;
         }
       } catch {
@@ -201,12 +232,22 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
       data: {
         userId: u.sub,
         occurredAt: new Date(occurredAt),
+        diaryLocalDate: diaryLocalDate ?? null,
         description,
         portionEstimate: portionEstimate ?? PortionEstimate.UNKNOWN,
         structuredEstimate: structuredEstimate ?? undefined,
         isModelEstimate,
-      },
+      } as unknown as Prisma.MealEntryUncheckedCreateInput,
     });
+
+    const fluidAdd = fluidMlFromStructured(structuredEstimate);
+    if (diaryLocalDate && fluidAdd > 0) {
+      const day = parseWaterCalendarDayUtc(diaryLocalDate);
+      if (day) {
+        await incrementDailyWater(prisma, { userId: u.sub, day, deltaMl: fluidAdd });
+      }
+    }
+
     await reply.status(201).send({ meal });
   });
 
@@ -217,12 +258,22 @@ export async function registerMealRoutes(app: FastifyInstance): Promise<void> {
       return;
     }
     const { mealId } = req.params as { mealId: string };
-    const removed = await prisma.mealEntry.deleteMany({
+    const existing = await prisma.mealEntry.findFirst({
       where: { id: mealId, userId: u.sub },
     });
-    if (removed.count === 0) {
+    if (!existing) {
       sendError(reply, 404, 'NOT_FOUND', 'Meal not found');
       return;
+    }
+    const fluidSub = fluidMlFromStructured(existing.structuredEstimate);
+    const dayStr =
+      (existing as unknown as { diaryLocalDate?: string | null }).diaryLocalDate ?? null;
+    await prisma.mealEntry.delete({ where: { id: mealId } });
+    if (fluidSub > 0 && dayStr) {
+      const day = parseWaterCalendarDayUtc(dayStr);
+      if (day) {
+        await incrementDailyWater(prisma, { userId: u.sub, day, deltaMl: -fluidSub });
+      }
     }
     await reply.send({ ok: true });
   });

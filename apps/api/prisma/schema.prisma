@@ -120,6 +120,8 @@ model MealEntry {
   userId                 String
   user                   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   occurredAt             DateTime
+  /** Календарный день дневника YYYY-MM-DD (локальный день выбора на клиенте), для воды из приёмов */
+  diaryLocalDate         String?
   description            String
   portionEstimate        PortionEstimate  @default(UNKNOWN)
   structuredEstimate     Json?

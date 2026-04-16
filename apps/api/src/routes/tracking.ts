@@ -4,16 +4,7 @@ import { prisma } from '../prisma.js';
 import { sendError } from '../lib/errors.js';
 import { getBearerUser } from '../auth/context.js';
 import { USER_INPUT } from '../lib/userInputBounds.js';
-
-function parseDayUtc(dateStr: string): Date | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
-  if (!m) return null;
-  const y = Number(m[1]);
-  const mo = Number(m[2]);
-  const d = Number(m[3]);
-  if (!y || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
-  return new Date(Date.UTC(y, mo - 1, d));
-}
+import { incrementDailyWater, parseWaterCalendarDayUtc } from '../lib/dailyWater.js';
 
 const weightPost = z.object({
   weightKg: z.number().min(USER_INPUT.weightKg.min).max(USER_INPUT.weightKg.max),
@@ -117,8 +108,8 @@ export async function registerTrackingRoutes(app: FastifyInstance): Promise<void
       sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid query', q.error.flatten());
       return;
     }
-    const fromD = parseDayUtc(q.data.from);
-    const toD = parseDayUtc(q.data.to);
+    const fromD = parseWaterCalendarDayUtc(q.data.from);
+    const toD = parseWaterCalendarDayUtc(q.data.to);
     if (!fromD || !toD) {
       sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid date range');
       return;
@@ -146,28 +137,17 @@ export async function registerTrackingRoutes(app: FastifyInstance): Promise<void
       sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid body', parsed.error.flatten());
       return;
     }
-    const day = parseDayUtc(parsed.data.date);
+    const day = parseWaterCalendarDayUtc(parsed.data.date);
     if (!day) {
       sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid date');
       return;
     }
-    const add = parsed.data.addMl;
-    const cap = USER_INPUT.waterDailyRecordedMaxMl;
-    const row = await prisma.dailyWater.upsert({
-      where: { userId_day: { userId: u.sub, day } },
-      create: { userId: u.sub, day, totalMl: Math.max(0, add) },
-      update: { totalMl: { increment: add } },
+    const { totalMl } = await incrementDailyWater(prisma, {
+      userId: u.sub,
+      day,
+      deltaMl: parsed.data.addMl,
     });
-    let totalMl = row.totalMl;
-    const clamped = Math.max(0, Math.min(totalMl, cap));
-    if (clamped !== totalMl) {
-      const fixed = await prisma.dailyWater.update({
-        where: { userId_day: { userId: u.sub, day } },
-        data: { totalMl: clamped },
-      });
-      totalMl = fixed.totalMl;
-    }
-    await reply.send({ day: row.day.toISOString().slice(0, 10), totalMl });
+    await reply.send({ day: parsed.data.date, totalMl });
   });
 
   app.get('/tracking/measurements', async (req, reply) => {
