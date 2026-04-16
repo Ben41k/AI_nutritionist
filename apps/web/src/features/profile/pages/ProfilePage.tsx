@@ -5,7 +5,6 @@ import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
 import { Textarea } from '@/shared/components/Textarea';
-import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
 import { useState } from 'react';
 
 const goals = ['WEIGHT_LOSS', 'WEIGHT_GAIN', 'MAINTENANCE', 'HEALTH'] as const;
@@ -380,7 +379,6 @@ export function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
-      <DisclaimerBanner />
       <ProfileForm key={data.profile.updatedAt} profile={data.profile} />
       <DeleteAccountSection />
     </div>

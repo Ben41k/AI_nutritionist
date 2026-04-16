@@ -1,7 +1,16 @@
 import { Fragment, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiJson } from '@/shared/services/apiClient';
 import { fetchMealsAllPagesForCalendarDay } from '@/shared/lib/fetchMealsAllPages';
+import {
+  bmrMifflinStJeor,
+  calorieTargetForAdherence,
+  tdeeFrom,
+  type ActivityLevel,
+  type NutritionGoal,
+  type Sex,
+} from '@/shared/lib/nutritionMetrics';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
@@ -117,6 +126,157 @@ function todayISO() {
   return `${y}-${m}-${day}`;
 }
 
+function parseLocalDate(iso: string): Date {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
+function toLocalISO(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function addDaysToISO(iso: string, deltaDays: number): string {
+  const d = parseLocalDate(iso);
+  d.setDate(d.getDate() + deltaDays);
+  return toLocalISO(d);
+}
+
+function formatSelectedDayTitle(iso: string): string {
+  return parseLocalDate(iso).toLocaleDateString('ru-RU', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+function formatShortDay(iso: string): string {
+  return parseLocalDate(iso).toLocaleDateString('ru-RU', {
+    day: 'numeric',
+    month: 'long',
+  });
+}
+
+/** Последние 7 календарных дней, заканчивая днём `anchorIso` (включительно). */
+function weekChipsEndingOn(anchorIso: string): string[] {
+  const t = parseLocalDate(anchorIso);
+  const out: string[] = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date(t);
+    d.setDate(t.getDate() - i);
+    out.push(toLocalISO(d));
+  }
+  return out;
+}
+
+type Profile = {
+  age: number | null;
+  sex: Sex;
+  weightKg: number | null;
+  heightCm: number | null;
+  goal: NutritionGoal;
+  activityLevel: ActivityLevel;
+};
+
+type WeightEntry = { recordedAt: string; weightKg: number };
+
+function sumMealCalories(meals: Meal[]): number {
+  let sum = 0;
+  for (const m of meals) {
+    const raw = m.structuredEstimate;
+    if (typeof raw !== 'object' || raw === null) continue;
+    const o = raw as Record<string, unknown>;
+    const v = o.caloriesKcal;
+    if (typeof v === 'number' && Number.isFinite(v)) sum += v;
+    else if (typeof v === 'string') {
+      const n = Number(v.replace(',', '.'));
+      if (Number.isFinite(n)) sum += n;
+    }
+  }
+  return sum;
+}
+
+function DayCaloriesBar({
+  consumedKcal,
+  targetKcal,
+  profileLoading,
+  profileIncomplete,
+}: {
+  consumedKcal: number;
+  targetKcal: number | null;
+  profileLoading: boolean;
+  profileIncomplete: boolean;
+}) {
+  const over = targetKcal != null && consumedKcal > targetKcal;
+  const fillPct =
+    targetKcal != null && targetKcal > 0
+      ? Math.min(100, (consumedKcal / targetKcal) * 100)
+      : 0;
+
+  return (
+    <div className="rounded-xl border border-border/60 bg-page/60 px-4 py-3 sm:px-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          Калории за день
+        </span>
+        {targetKcal != null ? (
+          <span className="text-sm font-semibold tabular-nums text-ink-heading">
+            {Math.round(consumedKcal).toLocaleString('ru-RU')} /{' '}
+            {Math.round(targetKcal).toLocaleString('ru-RU')} ккал
+          </span>
+        ) : (
+          <span className="text-sm font-semibold tabular-nums text-ink-heading">
+            {Math.round(consumedKcal).toLocaleString('ru-RU')} ккал
+          </span>
+        )}
+      </div>
+      {targetKcal != null && targetKcal > 0 ? (
+        <>
+          <div
+            className="mt-3 h-3 overflow-hidden rounded-full bg-border/55"
+            role="progressbar"
+            aria-valuenow={Math.round(Math.min(consumedKcal, targetKcal * 2))}
+            aria-valuemin={0}
+            aria-valuemax={Math.round(targetKcal)}
+            aria-label="Доля суточной нормы калорий"
+          >
+            <div
+              className={`h-full rounded-full transition-[width] duration-300 ${
+                over ? 'bg-amber-500' : 'bg-primary'
+              }`}
+              style={{ width: `${fillPct}%` }}
+            />
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-ink-muted">
+            {over
+              ? `Выше расчётной нормы примерно на ${Math.round(consumedKcal - targetKcal).toLocaleString('ru-RU')} ккал.`
+              : consumedKcal >= targetKcal
+                ? 'Норма достигнута.'
+                : `До нормы примерно ${Math.round(targetKcal - consumedKcal).toLocaleString('ru-RU')} ккал.`}
+          </p>
+        </>
+      ) : profileLoading ? (
+        <p className="mt-2 text-xs text-ink-muted">Загрузка профиля…</p>
+      ) : profileIncomplete ? (
+        <p className="mt-2 text-xs leading-relaxed text-ink-muted">
+          Чтобы показать норму и шкалу, укажите в{' '}
+          <Link className="font-medium text-primary underline underline-offset-2" to="/profile">
+            профиле
+          </Link>{' '}
+          рост, возраст и вес (или добавьте запись веса на главной).
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-ink-muted">
+          Норма не рассчитана: проверьте данные профиля и вес.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function MealsPage() {
   const qc = useQueryClient();
   const [date, setDate] = useState(todayISO);
@@ -127,12 +287,66 @@ export function MealsPage() {
   });
   const [analyze, setAnalyze] = useState(false);
 
+  const { data: profileData, isLoading: profileLoading } = useQuery({
+    queryKey: ['profile'],
+    queryFn: () => apiJson<{ profile: Profile }>('/profile'),
+  });
+  const profile = profileData?.profile;
+
+  const { data: weightData } = useQuery({
+    queryKey: ['tracking', 'weight', '730d'],
+    queryFn: () => {
+      const to = new Date().toISOString();
+      const from = new Date();
+      from.setDate(from.getDate() - 730);
+      const fromIso = from.toISOString();
+      return apiJson<{ entries: WeightEntry[] }>(
+        `/tracking/weight?from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(to)}`,
+      );
+    },
+    enabled: Boolean(profile),
+  });
+
+  const entries = useMemo(() => weightData?.entries ?? [], [weightData]);
+  const latestWeight = useMemo(() => {
+    if (entries.length === 0) return profile?.weightKg ?? null;
+    const last = entries[entries.length - 1];
+    return last?.weightKg ?? null;
+  }, [entries, profile?.weightKg]);
+
+  const targetKcal = useMemo(() => {
+    if (!profile || profile.age == null || latestWeight == null || profile.heightCm == null) {
+      return null;
+    }
+    const bmr = bmrMifflinStJeor({
+      weightKg: latestWeight,
+      heightCm: profile.heightCm,
+      age: profile.age,
+      sex: profile.sex,
+    });
+    const tdee = tdeeFrom(bmr, profile.activityLevel);
+    return Math.round(calorieTargetForAdherence(tdee, profile.goal));
+  }, [profile, latestWeight]);
+
   const queryKey = useMemo(() => ['meals', date] as const, [date]);
 
   const { data, isLoading } = useQuery<MealsListData>({
     queryKey,
     queryFn: () => fetchMealsAllPagesForCalendarDay(date),
   });
+
+  const consumedKcal = useMemo(() => sumMealCalories(data?.meals ?? []), [data?.meals]);
+
+  const profileIncomplete = Boolean(
+    profile &&
+      targetKcal == null &&
+      (profile.age == null ||
+        profile.heightCm == null ||
+        (latestWeight == null && profile.weightKg == null)),
+  );
+
+  const today = todayISO();
+  const weekChips = useMemo(() => weekChipsEndingOn(today), [today]);
 
   const create = useMutation({
     mutationFn: async () => {
@@ -171,7 +385,119 @@ export function MealsPage() {
   });
 
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
+    <div className="space-y-6">
+      <Card className="p-4 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+          <div className="min-w-0 flex-1 space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="min-w-0 text-center sm:text-left">
+                <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                  День в дневнике
+                </p>
+                <h2 className="mt-1 text-lg font-semibold capitalize leading-snug text-ink-heading sm:text-xl">
+                  {formatSelectedDayTitle(date)}
+                </h2>
+              </div>
+              <div className="flex items-center justify-center gap-1 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="shrink-0 px-3"
+                  aria-label="Предыдущий день"
+                  onClick={() => setDate((d) => addDaysToISO(d, -1))}
+                >
+                  ←
+                </Button>
+                <label className="sr-only" htmlFor="meals-diary-date">
+                  Выбор даты
+                </label>
+                <Input
+                  id="meals-diary-date"
+                  className="w-[11.5rem] shrink-0 rounded-full border-border text-center text-sm font-medium"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="shrink-0 px-3"
+                  aria-label="Следующий день"
+                  onClick={() => setDate((d) => addDaysToISO(d, 1))}
+                >
+                  →
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+              <Button
+                type="button"
+                variant="pill"
+                className={`text-xs ${date === today ? 'border-primary/40 bg-primary-soft' : ''}`}
+                disabled={date === today}
+                onClick={() => setDate(today)}
+              >
+                Сегодня
+              </Button>
+              <Button
+                type="button"
+                variant="pill"
+                className="text-xs"
+                onClick={() => setDate(addDaysToISO(today, -1))}
+              >
+                Вчера
+              </Button>
+            </div>
+            <div
+              className="flex gap-1.5 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              role="list"
+              aria-label="Быстрый выбор даты, последние 7 дней"
+            >
+              {weekChips.map((iso) => {
+                const isSelected = iso === date;
+                const isTodayChip = iso === today;
+                const label = parseLocalDate(iso).toLocaleDateString('ru-RU', {
+                  weekday: 'short',
+                  day: 'numeric',
+                  month: 'short',
+                });
+                return (
+                  <button
+                    key={iso}
+                    type="button"
+                    role="listitem"
+                    onClick={() => setDate(iso)}
+                    className={`shrink-0 rounded-full border px-3 py-1.5 text-left text-xs font-medium transition ${
+                      isSelected
+                        ? 'border-primary bg-primary text-white shadow-sm'
+                        : 'border-border/80 bg-surface text-ink-body hover:border-primary/50'
+                    }`}
+                  >
+                    <span className="block capitalize">{label}</span>
+                    {isTodayChip ? (
+                      <span
+                        className={`mt-0.5 block text-[10px] font-normal ${isSelected ? 'text-white/85' : 'text-ink-muted'}`}
+                      >
+                        сегодня
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="w-full shrink-0 lg:max-w-sm lg:border-l lg:border-border/50 lg:pl-8">
+            <DayCaloriesBar
+              consumedKcal={consumedKcal}
+              targetKcal={targetKcal}
+              profileLoading={profileLoading}
+              profileIncomplete={profileIncomplete}
+            />
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <h2 className="mb-4 text-lg font-semibold text-ink-heading">Новый приём пищи</h2>
         <form
@@ -182,15 +508,11 @@ export function MealsPage() {
             create.mutate();
           }}
         >
-          <label className="text-xs font-semibold text-ink-muted">
-            Дата
-            <Input
-              className="mt-1 rounded-md"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
+          <p className="rounded-lg border border-border/50 bg-page/50 px-3 py-2 text-xs leading-relaxed text-ink-muted">
+            Запись добавится на{' '}
+            <span className="font-semibold text-ink-heading">{formatShortDay(date)}</span>. Другой
+            день выберите в блоке «День в дневнике» выше.
+          </p>
           <label className="text-xs font-semibold text-ink-muted">
             Время
             <Input
@@ -219,7 +541,7 @@ export function MealsPage() {
               checked={analyze}
               onChange={(e) => setAnalyze(e.target.checked)}
             />
-            Оценить БЖУ через модель (приблизительно, не анализ лаборатории)
+            Оценить БЖУ через модель
           </label>
           {create.isError ? <p className="text-sm text-red-600">Не удалось сохранить</p> : null}
           <Button
@@ -231,7 +553,7 @@ export function MealsPage() {
         </form>
       </Card>
       <Card>
-        <h2 className="mb-4 text-lg font-semibold text-ink-heading">За выбранный день</h2>
+        <h2 className="mb-4 text-lg font-semibold text-ink-heading">Записи за этот день</h2>
         {isLoading ? <p className="text-ink-muted">Загрузка…</p> : null}
         <ul className="space-y-3">
           {(data?.meals ?? []).map((m) => (
@@ -280,6 +602,7 @@ export function MealsPage() {
           <p className="text-sm text-ink-muted">Записей пока нет</p>
         ) : null}
       </Card>
+      </div>
     </div>
   );
 }

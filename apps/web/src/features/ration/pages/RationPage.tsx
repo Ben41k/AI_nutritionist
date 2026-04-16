@@ -4,8 +4,6 @@ import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
-import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
-
 const RATION_STORAGE_PREFIX = 'ai-nutritionist:monthly-ration:';
 
 function readStoredRation(userId: string): string | null {
@@ -103,8 +101,6 @@ export function RationPage() {
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-6">
-      <DisclaimerBanner />
-
       {profileQuery.isLoading ? (
         <p className="text-ink-muted">Загрузка профиля…</p>
       ) : profileQuery.isError ? (

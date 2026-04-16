@@ -4,8 +4,6 @@ import { apiJson } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { TrashIcon } from '@/shared/components/TrashIcon';
-import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
-
 type Thread = { id: string; title: string | null; updatedAt: string };
 
 export function ChatListPage() {
@@ -36,7 +34,6 @@ export function ChatListPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
-      <DisclaimerBanner />
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-lg font-semibold text-ink-heading">Диалоги</h2>
         <Button onClick={() => create.mutate()} disabled={create.isPending}>

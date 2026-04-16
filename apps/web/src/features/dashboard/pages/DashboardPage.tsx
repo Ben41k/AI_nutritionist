@@ -6,7 +6,6 @@ import { fetchMealsAllPagesForCalendarDay } from '@/shared/lib/fetchMealsAllPage
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
-import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
 import {
   activityMultiplier,
   bmi,
@@ -543,8 +542,6 @@ export function DashboardPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-12 sm:space-y-14">
-      <DisclaimerBanner />
-
       <Section heading="1. Основные расчётные показатели (калькулятор)">
         <Metric
           title="ИМТ"

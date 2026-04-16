@@ -5,7 +5,6 @@ import { apiJson } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Textarea } from '@/shared/components/Textarea';
-import { DisclaimerBanner } from '@/shared/components/DisclaimerBanner';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { chatPaths } from '@/features/chat/routes';
 import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
@@ -113,7 +112,6 @@ export function ChatThreadPage() {
           />
         </Button>
       </div>
-      <DisclaimerBanner />
       {lastMeta ? <p className="text-xs text-ink-muted">{lastMeta}</p> : null}
       <Card className="flex max-h-[60vh] flex-col">
         <div className="flex-1 space-y-3 overflow-y-auto pr-1">
