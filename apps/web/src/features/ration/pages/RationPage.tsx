@@ -14,6 +14,7 @@ import {
   rationPlanPeriodLabel,
   todayLocalISO,
 } from '@/features/ration/lib/dateIso';
+import { normalizeRationDayBodyForIso } from '@/features/ration/lib/normalizeDayRationText';
 
 const RATION_STORAGE_PREFIX = 'ai-nutritionist:monthly-ration:';
 
@@ -209,7 +210,8 @@ export function RationPage() {
   const dayBody = useMemo(() => {
     if (bundle == null) return null;
     const v = bundle.days[resolvedIso]?.trim();
-    return v != null && v.length > 0 ? v : null;
+    if (v == null || v.length === 0) return null;
+    return normalizeRationDayBodyForIso(resolvedIso, v);
   }, [bundle, resolvedIso]);
 
   const hasBody = dayBody != null && dayBody.length > 0;
@@ -295,8 +297,9 @@ export function RationPage() {
                   <h2 className="text-lg font-semibold text-ink-heading">Рацион на месяц вперёд</h2>
                   <p className="mt-1 text-sm text-ink-muted">
                     ИИ строит примерный план на 31 день подряд, начиная с сегодняшней даты на вашем
-                    устройстве. Слева можно открыть любой день из сохранённого периода; справа —
-                    полный текст ответа модели по дням (без Markdown).
+                    устройстве. По каждому дню — завтрак, обед и ужин (обязательно) и при желании
+                    перекусы, отдельными строками. Слева можно открыть любой день из сохранённого
+                    периода; справа — полный текст ответа модели (без Markdown).
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">

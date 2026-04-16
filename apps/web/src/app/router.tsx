@@ -47,21 +47,31 @@ export const router = createBrowserRouter([
       {
         path: 'chat',
         lazy: async () => {
-          const { ChatListPage } = await import('@/features/chat/pages/ChatListPage');
-          return { Component: ChatListPage };
+          const { ChatWorkspacePage } = await import('@/features/chat/pages/ChatWorkspacePage');
+          return { Component: ChatWorkspacePage };
         },
         handle: { title: PRIMARY_NAV.chat.pageTitle, subtitle: PRIMARY_NAV.chat.description },
-      },
-      {
-        path: 'chat/:threadId',
-        lazy: async () => {
-          const { ChatThreadPage } = await import('@/features/chat/pages/ChatThreadPage');
-          return { Component: ChatThreadPage };
-        },
-        handle: {
-          title: 'Диалог',
-          subtitle: 'Сообщения в этом чате с AI-ассистентом по питанию.',
-        },
+        children: [
+          {
+            index: true,
+            lazy: async () => {
+              const { ChatEmptyRight } = await import('@/features/chat/pages/ChatEmptyRight');
+              return { Component: ChatEmptyRight };
+            },
+            handle: { title: PRIMARY_NAV.chat.pageTitle, subtitle: PRIMARY_NAV.chat.description },
+          },
+          {
+            path: ':threadId',
+            lazy: async () => {
+              const { ChatThreadPage } = await import('@/features/chat/pages/ChatThreadPage');
+              return { Component: ChatThreadPage };
+            },
+            handle: {
+              title: PRIMARY_NAV.chat.pageTitle,
+              subtitle: 'Сообщения в этом чате с AI-ассистентом по питанию.',
+            },
+          },
+        ],
       },
       {
         path: 'admin/knowledge',

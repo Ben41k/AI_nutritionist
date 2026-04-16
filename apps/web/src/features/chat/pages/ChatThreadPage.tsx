@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '@/shared/services/apiClient';
-import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
 import { Textarea } from '@/shared/components/Textarea';
 import { TrashIcon } from '@/shared/components/TrashIcon';
@@ -83,14 +82,13 @@ export function ChatThreadPage() {
   if (!threadId) return null;
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <Link
-          to={chatPaths.root}
-          className="inline-flex items-center justify-center gap-2 rounded-full border border-border bg-surface px-4 py-2 text-sm font-semibold text-ink-body transition hover:border-primary hover:shadow-soft"
-        >
-          ← К диалогам
-        </Link>
+    <div className="flex min-h-0 flex-1 flex-col bg-page">
+      <div className="flex shrink-0 items-center justify-end gap-2 border-b border-border px-3 py-2 sm:px-4">
+        {lastMeta ? (
+          <p className="mr-auto hidden max-w-[min(100%,28rem)] truncate text-xs text-ink-muted sm:block">
+            {lastMeta}
+          </p>
+        ) : null}
         <Button
           variant="ghost"
           className="px-2.5 py-2 text-primary hover:bg-primary-soft hover:text-primary-hover"
@@ -112,26 +110,28 @@ export function ChatThreadPage() {
           />
         </Button>
       </div>
-      {lastMeta ? <p className="text-xs text-ink-muted">{lastMeta}</p> : null}
-      <Card className="flex max-h-[60vh] flex-col">
-        <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-          {(data?.messages ?? []).map((m) => (
-            <div
-              key={m.id}
-              className={
-                m.role === 'USER'
-                  ? 'ml-8 rounded-lg bg-primary-soft px-3 py-2 text-sm text-ink-heading'
-                  : 'mr-8 rounded-lg border border-border bg-page px-3 py-2 text-sm text-ink-body'
-              }
-            >
-              {m.content}
-            </div>
-          ))}
-        </div>
-      </Card>
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+      {lastMeta ? (
+        <p className="border-b border-border px-3 py-1.5 text-xs text-ink-muted sm:hidden">{lastMeta}</p>
+      ) : null}
+
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3 sm:px-4 sm:py-4">
+        {(data?.messages ?? []).map((m) => (
+          <div
+            key={m.id}
+            className={
+              m.role === 'USER'
+                ? 'ml-4 rounded-xl bg-primary-soft px-3 py-2.5 text-sm text-ink-heading sm:ml-10'
+                : 'mr-4 rounded-xl border border-border/80 bg-surface/60 px-3 py-2.5 text-sm text-ink-body sm:mr-10'
+            }
+          >
+            {m.content}
+          </div>
+        ))}
+      </div>
+
+      <div className="flex shrink-0 flex-col gap-2 border-t border-border bg-page/95 p-3 backdrop-blur-sm sm:flex-row sm:items-end sm:px-4 sm:py-3">
         <Textarea
-          className="flex-1 rounded-md"
+          className="min-h-[5.5rem] flex-1 rounded-xl border-border bg-surface/80"
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) =>
@@ -140,20 +140,21 @@ export function ChatThreadPage() {
           placeholder="Ваш вопрос…"
         />
         <Button
-          className="sm:mb-0.5"
+          className="shrink-0 sm:mb-0.5"
           onClick={() => send.mutate()}
           disabled={send.isPending || !text.trim()}
         >
           {send.isPending ? 'Отправка…' : 'Отправить'}
         </Button>
       </div>
+
       {send.isError ? (
-        <p className="text-sm text-red-600">
+        <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">
           {send.error instanceof Error ? send.error.message : 'Ошибка отправки'}
         </p>
       ) : null}
       {removeThread.isError ? (
-        <p className="text-sm text-red-600">
+        <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">
           {removeThread.error instanceof Error
             ? removeThread.error.message
             : 'Не удалось удалить чат'}

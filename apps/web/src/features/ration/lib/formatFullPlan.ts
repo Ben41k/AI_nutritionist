@@ -1,14 +1,5 @@
 import { listIsoDatesInInclusiveRange, listIsoDatesInMonth } from '@/features/ration/lib/dateIso';
-
-function formatRuLongWeekdayDate(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  return new Intl.DateTimeFormat('ru-RU', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(y, m - 1, d));
-}
+import { normalizeRationDayBodyForIso } from '@/features/ration/lib/normalizeDayRationText';
 
 export type StoredRationPlanBundle =
   | { v: 2; month: string; preamble: string | null; days: Record<string, string> }
@@ -27,7 +18,7 @@ export function formatFullPlanFromBundle(bundle: StoredRationPlanBundle): string
   for (const iso of sequence) {
     const body = bundle.days[iso]?.trim();
     if (!body) continue;
-    lines.push(formatRuLongWeekdayDate(iso), body, '');
+    lines.push(normalizeRationDayBodyForIso(iso, body), '');
   }
   return lines.join('\n').trimEnd();
 }

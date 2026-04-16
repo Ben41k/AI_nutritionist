@@ -7,6 +7,7 @@ import { getBearerUser } from '../auth/context.js';
 import { openRouterRateLimitKey } from '../lib/rateLimitKeys.js';
 import { createChatCompletion, createEmbedding } from '../lib/openrouter.js';
 import { searchSimilarChunks } from '../lib/vectorSearch.js';
+import { normalizeRationDayBodyForIso } from '../lib/rationDayNormalize.js';
 
 const postBodySchema = z.object({
   /** Локальная дата клиента (YYYY-MM-DD), с которой начинается скользящий период. */
@@ -65,10 +66,19 @@ function buildJsonRollingPrompt(params: {
         '{"preamble":"string in Russian, short intro and calorie hint if possible","days":{"YYYY-MM-DD":"string in Russian for that day"}}',
         `The keys in "days" must be exactly these consecutive calendar dates from ${params.periodStart} through ${params.periodEnd} (inclusive): ${dateList}`,
         'Every listed date must appear as a key in "days".',
-        'For each "days" value: the string MUST start with its first line giving the weekday name and the calendar date in Russian that matches the JSON key (e.g. key 2026-04-15 → first line like «понедельник, 15 апреля 2026» or «Понедельник, 15.04.2026»), then a blank line, then 4–10 short lines: breakfast, lunch, dinner, one snack — concrete foods; respect allergies and preferences from the profile strictly.',
+        'For each "days" value, structure the Russian text exactly as follows (plain text, line breaks only):',
+        'Line 1: weekday name and calendar date in Russian for the **same calendar day** as the JSON key YYYY-MM-DD only: derive weekday and day/month/year from that ISO key (Gregorian); the written date and weekday must match that key exactly — never use another day or weekday on line 1.',
+        'Line 2: empty (one blank line).',
+        'Then these three mandatory lines, each on its own line, in this fixed order. Each line MUST start with this exact ASCII pattern (word + ASCII colon, no «» guillemets, no typographic colon):',
+        '  Завтрак: then concrete foods for breakfast on the same line.',
+        '  Обед: then concrete foods for lunch on the same line.',
+        '  Ужин: then concrete foods for dinner on the same line.',
+        'Breakfast, lunch, and dinner must never be omitted, merged into one line, or replaced by a generic phrase without foods — every calendar day must include all three labeled meals.',
+        'After «Ужин:», you may add 0–3 optional snack or extra-meal lines on separate lines, each starting with a clear Russian label and colon, e.g. «Перекус:», «Второй перекус:», «Полдник:» — describe specific foods; omit extra lines if not needed.',
+        'Respect allergies and preferences from the profile strictly in every meal line.',
         'Do not use Markdown anywhere in "preamble" or in any "days" value: no # headings, no ** or __ emphasis, no bullet lists with - or *, no numbered markdown lists, no [text](url) links, no code fences. Use plain Russian text and line breaks only.',
         'The plan is illustrative only; values may note that portions should be adjusted individually.',
-        'Keep each day value concise (under 900 characters per day) so the full JSON stays reasonable.',
+        'Keep each day value concise (under 1100 characters per day) so the full JSON stays reasonable.',
         '',
         'Knowledge base excerpts (may be empty):',
         kb || '(none retrieved)',
@@ -79,7 +89,7 @@ function buildJsonRollingPrompt(params: {
     },
     {
       role: 'user',
-      content: `Составь примерный рацион на каждый из перечисленных дней подряд (скользящий период с ${params.periodStart} по ${params.periodEnd}) в формате JSON, как указано в системных инструкциях.`,
+      content: `Составь примерный рацион на каждый из перечисленных дней подряд (скользящий период с ${params.periodStart} по ${params.periodEnd}) в формате JSON, как указано в системных инструкциях. Для каждого дня обязательно выдели приёмы пищи строками «Завтрак:», «Обед:», «Ужин:»; при необходимости добавь перекусы отдельными строками с подписью и двоеточием.`,
     },
   ];
 }
@@ -203,7 +213,7 @@ export async function registerMealRationRoutes(app: FastifyInstance): Promise<vo
         const v = parsed.days[iso]?.trim();
         merged[iso] =
           v && v.length > 0
-            ? v
+            ? normalizeRationDayBodyForIso(iso, v)
             : 'За этот день не удалось получить блок рациона из ответа модели — сформируйте рацион ещё раз.';
       }
 
