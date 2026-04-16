@@ -14,6 +14,7 @@ import {
   setChatMessageEmbedding,
 } from '../lib/vectorSearch.js';
 import type { RetrievedThreadMessage } from '../lib/vectorSearch.js';
+import { clampClientRationText, loadChatUserExtendedContext } from '../lib/chatUserContext.js';
 
 const createThreadBody = z.object({
   title: z.string().max(200).optional(),
@@ -21,6 +22,8 @@ const createThreadBody = z.object({
 
 const postMessageBody = z.object({
   content: z.string().min(1).max(8000),
+  /** Текст сохранённого рациона с устройства (sessionStorage), чтобы ИИ видел составленный план. */
+  clientRationPlanText: z.string().max(24_000).optional(),
 });
 
 const messagesListQuery = z.object({
@@ -42,6 +45,9 @@ function formatDialogMemoryForPrompt(rows: RetrievedThreadMessage[]): string {
 
 function buildSystemPrompt(params: {
   profileSummary: string;
+  metricsBlock: string;
+  diaryBlock: string;
+  rationFromClient: string;
   knowledgeContext: string;
   dialogMemoryContext: string;
 }): string {
@@ -50,12 +56,14 @@ function buildSystemPrompt(params: {
   return [
     'You are an AI nutrition assistant (not a medical professional).',
     'Speak in Russian.',
-    'Do not use MarkDown formatting in your responses.',
+    'Format replies in Markdown (CommonMark + GitHub-style pipe tables when comparing numbers or meal options). The client renders Markdown, so use it for clarity: short paragraphs separated by a blank line, bullet or numbered lists for plans and options, **bold** for key takeaways and warnings, `inline code` sparingly for numbers or labels when it helps scanning.',
+    'For longer answers, add ### section headings. Prefer compact pipe tables over code blocks for small numeric grids; use fenced code blocks (triple backticks) for long structured snippets. Avoid decorative ASCII art.',
     'Do not diagnose diseases or prescribe medications.',
     'If the user describes acute or alarming symptoms, tell them to seek urgent in-person medical care.',
     'Prefer practical meal planning and general wellness guidance.',
     'When "Knowledge base excerpts" are provided, ground answers in them when relevant; if they are empty, answer from general nutrition principles.',
     'When "Earlier related turns from this thread" lists past lines, they are semantically similar to the current question; use them to stay consistent with facts the user stated earlier (names, goals, constraints). Do not contradict the explicit chat history you see in the messages list.',
+    'The sections "User profile", "Metrics", "Food diary", and "Saved ration from app" describe the same real user; use them as ground truth when answering. If something is missing, say so briefly and ask only what is truly needed.',
     '',
     'Knowledge base excerpts:',
     kb || '(none retrieved)',
@@ -63,8 +71,17 @@ function buildSystemPrompt(params: {
     'Earlier related turns from this thread (vector recall):',
     mem || '(none — first messages in thread or embeddings not available yet)',
     '',
-    'User profile (may be incomplete):',
+    'User profile (JSON, may be incomplete):',
     params.profileSummary,
+    '',
+    'Metrics (weight, daily water, body measurements from the app):',
+    params.metricsBlock,
+    '',
+    'Food diary (recent meal log entries from the app):',
+    params.diaryBlock,
+    '',
+    'Saved ration from app (rolling plan text from the user device when they sent this message):',
+    params.rationFromClient,
   ].join('\n');
 }
 
@@ -188,29 +205,17 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const content = parsed.data.content;
+    const clientRationSafe = clampClientRationText(parsed.data.clientRationPlanText);
 
     const userMessage = await prisma.chatMessage.create({
       data: { threadId, role: ChatRole.USER, content },
     });
 
-    const profile = await prisma.profile.findUnique({ where: { userId: u.sub } });
-    const profileSummary = profile
-      ? JSON.stringify({
-          age: profile.age,
-          sex: profile.sex,
-          weightKg: profile.weightKg,
-          heightCm: profile.heightCm,
-          goal: profile.goal,
-          activityLevel: profile.activityLevel,
-          allergies: profile.allergies,
-          preferences: profile.preferences,
-          targetWeightKg: profile.targetWeightKg,
-          startWeightKg: profile.startWeightKg,
-          waterGoalMl: profile.waterGoalMl,
-          createdAt: profile.createdAt,
-          updatedAt: profile.updatedAt,
-        })
-      : '{}';
+    const { profileJson, metricsBlock, diaryBlock, rationFromClient } = await loadChatUserExtendedContext(
+      prisma,
+      u.sub,
+      clientRationSafe,
+    );
 
     let knowledgeContext = '';
     let dialogMemoryContext = '';
@@ -252,7 +257,14 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
     });
     history.reverse();
 
-    const system = buildSystemPrompt({ profileSummary, knowledgeContext, dialogMemoryContext });
+    const system = buildSystemPrompt({
+      profileSummary: profileJson,
+      metricsBlock,
+      diaryBlock,
+      rationFromClient,
+      knowledgeContext,
+      dialogMemoryContext,
+    });
 
     const completionMessages: { role: 'system' | 'user' | 'assistant'; content: string }[] = [
       { role: 'system', content: system },

@@ -1,12 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { apiJson } from '@/shared/services/apiClient';
+import { useAuth } from '@/features/auth/hooks/useAuth';
+import { getStoredRationPlanPlainText } from '@/features/ration/lib/rationSessionStorage';
 import { Button } from '@/shared/components/Button';
 import { Textarea } from '@/shared/components/Textarea';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { chatPaths } from '@/features/chat/routes';
 import { handleEnterSubmit } from '@/shared/lib/submitOnEnter';
+import { ChatAssistantMarkdown } from '@/features/chat/components/ChatAssistantMarkdown';
 
 type Msg = {
   id: string;
@@ -19,8 +22,11 @@ export function ChatThreadPage() {
   const { threadId } = useParams<{ threadId: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { data: user } = useAuth();
   const [text, setText] = useState('');
   const [lastMeta, setLastMeta] = useState<string | null>(null);
+  const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data } = useQuery({
     queryKey: ['chat-messages', threadId],
@@ -43,15 +49,26 @@ export function ChatThreadPage() {
   });
 
   const send = useMutation({
-    mutationFn: async () => {
-      const res = await apiJson<{
+    mutationFn: async (content: string) => {
+      const rationText = user?.id ? getStoredRationPlanPlainText(user.id) : null;
+      return apiJson<{
         message: { content: string };
         retrievalUsed: boolean;
         dialogMemoryUsed: boolean;
       }>(`/chat/threads/${threadId}/messages`, {
         method: 'POST',
-        body: JSON.stringify({ content: text }),
+        body: JSON.stringify({
+          content,
+          ...(rationText ? { clientRationPlanText: rationText } : {}),
+        }),
       });
+    },
+    onMutate: (content) => {
+      setOptimisticUserContent(content);
+      setText('');
+      return { previousContent: content };
+    },
+    onSuccess: async (res) => {
       const kb = res.retrievalUsed
         ? 'База знаний: подмешаны выдержки'
         : 'База знаний: без релевантных фрагментов';
@@ -59,13 +76,21 @@ export function ChatThreadPage() {
         ? 'Память диалога: подмешаны похожие прошлые реплики'
         : 'Память диалога: нет (мало сообщений с эмбеддингами или первые реплики)';
       setLastMeta(`${kb} · ${mem}`);
-      return res;
+      try {
+        await qc.invalidateQueries({ queryKey: ['chat-messages', threadId] });
+      } finally {
+        setOptimisticUserContent(null);
+      }
     },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['chat-messages', threadId] });
-      setText('');
+    onError: (_err, _content, ctx) => {
+      setOptimisticUserContent(null);
+      if (ctx?.previousContent) setText(ctx.previousContent);
     },
   });
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [data?.messages, optimisticUserContent, send.isPending]);
 
   const removeThread = useMutation({
     mutationFn: async () => {
@@ -124,9 +149,35 @@ export function ChatThreadPage() {
                 : 'mr-4 rounded-xl border border-border/80 bg-surface/60 px-3 py-2.5 text-sm text-ink-body sm:mr-10'
             }
           >
-            {m.content}
+            {m.role === 'ASSISTANT' ? (
+              <ChatAssistantMarkdown text={m.content} />
+            ) : (
+              m.content
+            )}
           </div>
         ))}
+        {optimisticUserContent ? (
+          <div className="ml-4 rounded-xl bg-primary-soft px-3 py-2.5 text-sm text-ink-heading sm:ml-10">
+            {optimisticUserContent}
+          </div>
+        ) : null}
+        {send.isPending && optimisticUserContent ? (
+          <div
+            className="mr-4 rounded-xl border border-border/80 bg-surface/60 px-3 py-2.5 text-sm text-ink-muted sm:mr-10"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <span className="inline-flex items-center gap-2">
+              <span>Печатает</span>
+              <span className="inline-flex translate-y-px gap-0.5">
+                <span className="size-1.5 animate-bounce rounded-full bg-ink-muted/70 [animation-duration:1s] [animation-delay:0ms]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-ink-muted/70 [animation-duration:1s] [animation-delay:150ms]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-ink-muted/70 [animation-duration:1s] [animation-delay:300ms]" />
+              </span>
+            </span>
+          </div>
+        ) : null}
+        <div ref={messagesEndRef} className="h-px shrink-0" aria-hidden />
       </div>
 
       <div className="flex shrink-0 flex-col gap-2 border-t border-border bg-page/95 p-3 backdrop-blur-sm sm:flex-row sm:items-end sm:px-4 sm:py-3">
@@ -135,13 +186,19 @@ export function ChatThreadPage() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) =>
-            handleEnterSubmit(e, !send.isPending && Boolean(text.trim()), () => send.mutate())
+            handleEnterSubmit(e, !send.isPending && Boolean(text.trim()), () => {
+              const c = text.trim();
+              if (c) send.mutate(c);
+            })
           }
           placeholder="Ваш вопрос…"
         />
         <Button
           className="shrink-0 sm:mb-0.5"
-          onClick={() => send.mutate()}
+          onClick={() => {
+            const c = text.trim();
+            if (c) send.mutate(c);
+          }}
           disabled={send.isPending || !text.trim()}
         >
           {send.isPending ? 'Отправка…' : 'Отправить'}

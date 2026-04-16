@@ -8,121 +8,16 @@ import { Button } from '@/shared/components/Button';
 import { RationTodayCard } from '@/features/ration/components/RationTodayCard';
 import { RationAiFullResponsePanel } from '@/features/ration/components/RationAiFullResponsePanel';
 import { formatFullPlanFromBundle, type StoredRationPlanBundle } from '@/features/ration/lib/formatFullPlan';
-import {
-  listIsoDatesInMonth,
-  monthFromToday,
-  rationPlanPeriodLabel,
-  todayLocalISO,
-} from '@/features/ration/lib/dateIso';
+import { rationPlanPeriodLabel, todayLocalISO } from '@/features/ration/lib/dateIso';
 import { normalizeRationDayBodyForIso } from '@/features/ration/lib/normalizeDayRationText';
-
-const RATION_STORAGE_PREFIX = 'ai-nutritionist:monthly-ration:';
-
-export type RationBundleV2 = {
-  v: 2;
-  month: string;
-  preamble: string | null;
-  days: Record<string, string>;
-};
-
-export type RationBundleV3 = {
-  v: 3;
-  periodStart: string;
-  periodEnd: string;
-  preamble: string | null;
-  days: Record<string, string>;
-};
-
-function readStoredRationRaw(userId: string): string | null {
-  try {
-    const v = sessionStorage.getItem(RATION_STORAGE_PREFIX + userId);
-    return v != null && v.length > 0 ? v : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistRationRaw(userId: string, raw: string | null): void {
-  try {
-    const key = RATION_STORAGE_PREFIX + userId;
-    if (raw == null || raw.length === 0) {
-      sessionStorage.removeItem(key);
-    } else {
-      sessionStorage.setItem(key, raw);
-    }
-  } catch {
-    /* quota / private mode */
-  }
-}
-
-function isV2Bundle(j: unknown): j is RationBundleV2 {
-  if (typeof j !== 'object' || j === null) return false;
-  const o = j as Record<string, unknown>;
-  return (
-    o.v === 2 &&
-    typeof o.month === 'string' &&
-    typeof o.days === 'object' &&
-    o.days !== null &&
-    !Array.isArray(o.days)
-  );
-}
-
-function isV3Bundle(j: unknown): j is RationBundleV3 {
-  if (typeof j !== 'object' || j === null) return false;
-  const o = j as Record<string, unknown>;
-  return (
-    o.v === 3 &&
-    typeof o.periodStart === 'string' &&
-    typeof o.periodEnd === 'string' &&
-    typeof o.days === 'object' &&
-    o.days !== null &&
-    !Array.isArray(o.days)
-  );
-}
-
-function parseStoredRation(raw: string | null): StoredRationPlanBundle | null {
-  if (raw == null || raw.length === 0) return null;
-  try {
-    const j = JSON.parse(raw) as unknown;
-    if (isV3Bundle(j)) {
-      return {
-        v: 3,
-        periodStart: j.periodStart,
-        periodEnd: j.periodEnd,
-        preamble: typeof j.preamble === 'string' ? j.preamble : null,
-        days: j.days as Record<string, string>,
-      };
-    }
-    if (isV2Bundle(j)) {
-      return {
-        v: 2,
-        month: j.month,
-        preamble: typeof j.preamble === 'string' ? j.preamble : null,
-        days: j.days as Record<string, string>,
-      };
-    }
-    return null;
-  } catch {
-    const m = monthFromToday();
-    const day = todayLocalISO();
-    return { v: 2, month: m, preamble: null, days: { [day]: raw } };
-  }
-}
-
-function serializeBundle(b: StoredRationPlanBundle): string {
-  return JSON.stringify(b);
-}
-
-function bundleDateBounds(bundle: StoredRationPlanBundle): { min: string; max: string } {
-  if (bundle.v === 3) return { min: bundle.periodStart, max: bundle.periodEnd };
-  const seq = listIsoDatesInMonth(bundle.month);
-  const first = seq[0];
-  const last = seq[seq.length - 1];
-  if (first === undefined || last === undefined) {
-    return { min: `${bundle.month}-01`, max: `${bundle.month}-01` };
-  }
-  return { min: first, max: last };
-}
+import {
+  bundleDateBounds,
+  parseStoredRation,
+  persistRationRaw,
+  readStoredRationRaw,
+  serializeBundle,
+  type RationBundleV3,
+} from '@/features/ration/lib/rationSessionStorage';
 
 function dayViewEmptyMessage(
   bundle: StoredRationPlanBundle | null,
