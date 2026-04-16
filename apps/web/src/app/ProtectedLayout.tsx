@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { AppShell } from '@/shared/components/AppShell';
 import { HeaderAccountMenu } from '@/shared/components/HeaderAccountMenu';
+import { useToast } from '@/shared/hooks/useToast';
 import { ApiError, apiJson } from '@/shared/services/apiClient';
 
 type Handle = { title?: string; subtitle?: string };
@@ -21,9 +22,9 @@ function logoutErrorMessage(err: unknown): string {
 export function ProtectedLayout() {
   const { data: user, isLoading } = useAuth();
   const qc = useQueryClient();
+  const toast = useToast();
   const matches = useMatches();
   const handle = (matches[matches.length - 1]?.handle ?? {}) as Handle;
-  const [logoutError, setLogoutError] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
   if (isLoading) {
@@ -38,13 +39,12 @@ export function ProtectedLayout() {
   }
 
   async function logout() {
-    setLogoutError(null);
     setLoggingOut(true);
     try {
       await apiJson('/auth/logout', { method: 'POST' });
     } catch (err) {
       console.error('Logout failed', err);
-      setLogoutError(logoutErrorMessage(err));
+      toast.error(logoutErrorMessage(err));
     } finally {
       setLoggingOut(false);
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
@@ -62,7 +62,6 @@ export function ProtectedLayout() {
           roleLabel={user.role === 'ADMIN' ? 'Администратор' : 'Пользователь'}
           loggingOut={loggingOut}
           onLogout={() => void logout()}
-          logoutError={logoutError}
         />
       }
     />

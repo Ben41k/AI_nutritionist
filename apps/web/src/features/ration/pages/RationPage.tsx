@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { Card } from '@/shared/components/Card';
+import { useToast } from '@/shared/hooks/useToast';
 import { Button } from '@/shared/components/Button';
 import { RationTodayCard } from '@/features/ration/components/RationTodayCard';
 import { RationAiFullResponsePanel } from '@/features/ration/components/RationAiFullResponsePanel';
@@ -73,6 +74,7 @@ type MonthlyApiResponse = {
 export function RationPage() {
   const { data: user } = useAuth();
   const qc = useQueryClient();
+  const toast = useToast();
   const [selectedIso, setSelectedIso] = useState(todayLocalISO);
 
   const rationStoredQuery = useQuery({
@@ -126,6 +128,9 @@ export function RationPage() {
         method: 'POST',
         body: JSON.stringify({ startDate: todayLocalISO() }),
       }),
+    onError: (e) => {
+      toast.error(generationErrorMessage(e));
+    },
     onSuccess: (data) => {
       const uid = user?.id;
       if (uid) {
@@ -147,10 +152,6 @@ export function RationPage() {
     },
   });
 
-  const generationError = generate.isError && generate.error != null
-    ? generationErrorMessage(generate.error)
-    : null;
-
   const profile = profileQuery.data?.profile;
 
   return (
@@ -158,7 +159,7 @@ export function RationPage() {
       {profileQuery.isLoading ? (
         <p className="text-ink-muted">Загрузка профиля…</p>
       ) : profileQuery.isError ? (
-        <Card className="border-red-200 bg-red-50/60 text-sm text-red-800">
+        <Card className="border-border/80 bg-surface text-sm text-ink-body shadow-soft">
           Не удалось загрузить профиль.{' '}
           <Link className="font-medium text-primary underline" to="/profile">
             Открыть профиль
@@ -222,7 +223,6 @@ export function RationPage() {
                     </Button>
                   ) : null}
                 </div>
-                {generationError ? <p className="text-sm text-red-600">{generationError}</p> : null}
               </Card>
             </div>
 

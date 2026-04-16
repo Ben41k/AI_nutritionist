@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFormDataJson, apiJson, ApiError } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
+import { useToast } from '@/shared/hooks/useToast';
 import { Button } from '@/shared/components/Button';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { Input } from '@/shared/components/Input';
@@ -21,16 +22,14 @@ type DocDetail = {
 
 export function AdminKnowledgePage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [uploadTitle, setUploadTitle] = useState('');
-  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editContent, setEditContent] = useState('');
-  const [editError, setEditError] = useState<string | null>(null);
   const [lastSavedChunks, setLastSavedChunks] = useState<number | null>(null);
 
   const { data } = useQuery({
@@ -65,8 +64,12 @@ export function AdminKnowledgePage() {
     setEditTitle(d.title);
     setEditContent(d.content);
     setLastSavedChunks(d.chunks.length);
-    setEditError(null);
   }, [detailQuery.data?.document]);
+
+  useEffect(() => {
+    if (!editingId || !detailQuery.isError) return;
+    toast.error('Не удалось загрузить документ.');
+  }, [editingId, detailQuery.isError, toast]);
 
   const create = useMutation({
     mutationFn: () =>
@@ -81,11 +84,10 @@ export function AdminKnowledgePage() {
       void qc.invalidateQueries({ queryKey: ['admin-docs'] });
       setTitle('');
       setContent('');
-      setError(null);
       setLastSavedChunks(res.document.chunks);
     },
     onError: (e) => {
-      setError(e instanceof ApiError ? e.message : 'Ошибка');
+      toast.error(e instanceof ApiError ? e.message : 'Ошибка');
     },
   });
 
@@ -106,11 +108,10 @@ export function AdminKnowledgePage() {
     onSuccess: (res) => {
       void qc.invalidateQueries({ queryKey: ['admin-docs'] });
       void qc.invalidateQueries({ queryKey: ['admin-doc', editingId] });
-      setEditError(null);
       setLastSavedChunks(res.document.chunks);
     },
     onError: (e) => {
-      setEditError(e instanceof ApiError ? e.message : 'Ошибка');
+      toast.error(e instanceof ApiError ? e.message : 'Ошибка');
     },
   });
 
@@ -127,10 +128,9 @@ export function AdminKnowledgePage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['admin-docs'] });
       setUploadTitle('');
-      setUploadError(null);
     },
     onError: (e) => {
-      setUploadError(e instanceof ApiError ? e.message : 'Ошибка загрузки');
+      toast.error(e instanceof ApiError ? e.message : 'Ошибка загрузки');
     },
   });
 
@@ -186,7 +186,6 @@ export function AdminKnowledgePage() {
               )
             }
           />
-          {error ? <p className="mb-2 text-sm text-red-600">{error}</p> : null}
           {create.isSuccess && lastSavedChunks != null && !editingId ? (
             <p className="mb-2 text-sm text-ink-muted">
               Индексация: {lastSavedChunks} чанков (успех).
@@ -219,7 +218,6 @@ export function AdminKnowledgePage() {
             }}
             disabled={uploadFile.isPending}
           />
-          {uploadError ? <p className="text-sm text-red-600">{uploadError}</p> : null}
           {uploadFile.isPending ? <p className="text-xs text-ink-muted">Индексация файла…</p> : null}
         </div>
       </Card>
@@ -239,7 +237,6 @@ export function AdminKnowledgePage() {
                   className="mt-1 text-xs font-medium text-primary underline"
                   onClick={() => {
                     setEditingId(d.id);
-                    setEditError(null);
                   }}
                 >
                   Редактировать
@@ -269,7 +266,6 @@ export function AdminKnowledgePage() {
               className="text-ink-muted"
               onClick={() => {
                 setEditingId(null);
-                setEditError(null);
               }}
             >
               Закрыть
@@ -278,7 +274,9 @@ export function AdminKnowledgePage() {
           {detailQuery.isLoading ? (
             <p className="text-sm text-ink-muted">Загрузка…</p>
           ) : detailQuery.isError ? (
-            <p className="text-sm text-red-600">Не удалось загрузить документ.</p>
+            <p className="text-sm text-ink-muted">
+              Не удалось загрузить документ. Закройте панель и попробуйте снова.
+            </p>
           ) : (
             <form
               className="space-y-3"
@@ -303,8 +301,7 @@ export function AdminKnowledgePage() {
                   handleEnterSubmit(e, !patch.isPending && canPatch, () => patch.mutate())
                 }
               />
-              {editError ? <p className="text-sm text-red-600">{editError}</p> : null}
-              {lastSavedChunks != null && !patch.isPending && !editError ? (
+              {lastSavedChunks != null && !patch.isPending && !patch.isError ? (
                 <p className="text-sm text-ink-muted">
                   Чанков в индексе: {lastSavedChunks}
                   {patch.isSuccess ? ' · последнее сохранение успешно' : ''}

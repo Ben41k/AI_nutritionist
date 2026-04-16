@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/shared/hooks/useToast';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Button } from '@/shared/components/Button';
 import { Input } from '@/shared/components/Input';
@@ -10,14 +11,13 @@ import { USER_INPUT } from '@/shared/lib/userInputBounds';
 export function RegisterPage() {
   const qc = useQueryClient();
   const nav = useNavigate();
+  const toast = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
     setLoading(true);
     try {
       await apiJson('/auth/register', {
@@ -30,7 +30,7 @@ export function RegisterPage() {
       await qc.invalidateQueries({ queryKey: ['auth', 'me'] });
       nav('/');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Не удалось зарегистрироваться');
+      toast.error(err instanceof ApiError ? err.message : 'Не удалось зарегистрироваться');
     } finally {
       setLoading(false);
     }
@@ -65,7 +65,6 @@ export function RegisterPage() {
               required
             />
           </div>
-          {error ? <p className="text-sm text-red-600">{error}</p> : null}
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Создание…' : 'Создать аккаунт'}
           </Button>

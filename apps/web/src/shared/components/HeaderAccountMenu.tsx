@@ -24,13 +24,11 @@ export function HeaderAccountMenu({
   roleLabel,
   loggingOut,
   onLogout,
-  logoutError,
 }: {
   email: string;
   roleLabel: string;
   loggingOut: boolean;
   onLogout: () => void;
-  logoutError: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -109,8 +107,6 @@ export function HeaderAccountMenu({
           </div>
         </div>
       ) : null}
-
-      {logoutError ? <p className="max-w-xs text-right text-sm text-red-600">{logoutError}</p> : null}
     </div>
   );
 }

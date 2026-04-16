@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import clsx from 'clsx';
-import { apiJson } from '@/shared/services/apiClient';
+import { useToast } from '@/shared/hooks/useToast';
+import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Button } from '@/shared/components/Button';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { chatPaths } from '@/features/chat/routes';
@@ -12,6 +13,7 @@ export function ChatSidebar() {
   const navigate = useNavigate();
   const { threadId: activeThreadId } = useParams();
   const qc = useQueryClient();
+  const toast = useToast();
   const { data, isLoading } = useQuery({
     queryKey: ['chat-threads'],
     queryFn: () => apiJson<{ threads: Thread[] }>('/chat/threads'),
@@ -36,6 +38,8 @@ export function ChatSidebar() {
         navigate(chatPaths.root);
       }
     },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось удалить чат'),
   });
 
   return (
@@ -103,11 +107,6 @@ export function ChatSidebar() {
           <p className="px-3 py-4 text-sm text-ink-muted">Создайте первый диалог.</p>
         ) : null}
       </div>
-      {remove.isError ? (
-        <p className="border-t border-border px-3 py-2 text-xs text-red-600">
-          {remove.error instanceof Error ? remove.error.message : 'Не удалось удалить чат'}
-        </p>
-      ) : null}
     </aside>
   );
 }

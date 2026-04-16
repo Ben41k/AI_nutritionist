@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/shared/hooks/useToast';
 import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
@@ -62,6 +63,7 @@ type Profile = {
 
 function ProfileForm({ profile }: { profile: Profile }) {
   const qc = useQueryClient();
+  const toast = useToast();
   const [form, setForm] = useState<Partial<Profile>>(() => profile);
 
   const save = useMutation({
@@ -107,6 +109,10 @@ function ProfileForm({ profile }: { profile: Profile }) {
       });
     },
     onSuccess: () => void qc.invalidateQueries({ queryKey: ['profile'] }),
+    onError: (e) =>
+      toast.error(
+        e instanceof ApiError ? e.message : 'Не удалось сохранить профиль',
+      ),
   });
 
   return (
@@ -319,7 +325,6 @@ function ProfileForm({ profile }: { profile: Profile }) {
           onChange={(e) => setForm({ ...form, preferences: e.target.value })}
         />
       </label>
-      {save.isError ? <p className="mt-3 text-sm text-red-600">Ошибка сохранения</p> : null}
       {save.isSuccess ? <p className="mt-3 text-sm text-primary">Сохранено</p> : null}
       <Button type="submit" className="mt-6" disabled={save.isPending}>
         {save.isPending ? 'Сохранение…' : 'Сохранить'}
@@ -332,8 +337,8 @@ function ProfileForm({ profile }: { profile: Profile }) {
 function DeleteAccountSection() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const toast = useToast();
   const [password, setPassword] = useState('');
-  const [err, setErr] = useState<string | null>(null);
 
   const del = useMutation({
     mutationFn: () =>
@@ -342,12 +347,11 @@ function DeleteAccountSection() {
         body: JSON.stringify({ password }),
       }),
     onSuccess: async () => {
-      setErr(null);
       qc.clear();
       navigate('/login', { replace: true });
     },
     onError: (e) => {
-      setErr(e instanceof ApiError ? e.message : 'Не удалось удалить аккаунт');
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось удалить аккаунт');
     },
   });
 
@@ -369,7 +373,6 @@ function DeleteAccountSection() {
           autoComplete="current-password"
         />
       </label>
-      {err ? <p className="mb-3 text-sm text-red-600">{err}</p> : null}
       <Button
         type="button"
         variant="ghost"

@@ -1,7 +1,8 @@
 import { Fragment, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiJson } from '@/shared/services/apiClient';
+import { useToast } from '@/shared/hooks/useToast';
+import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { fetchMealsAllPagesForCalendarDay } from '@/shared/lib/fetchMealsAllPages';
 import {
   bmrMifflinStJeor,
@@ -281,9 +282,9 @@ function DayCaloriesBar({
 
 export function MealsPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [date, setDate] = useState(todayISO);
   const [description, setDescription] = useState('');
-  const [mealDescErr, setMealDescErr] = useState<string | null>(null);
   const [time, setTime] = useState(() => {
     const d = new Date();
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
@@ -376,6 +377,8 @@ export function MealsPage() {
       void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
       setDescription('');
     },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить приём пищи'),
   });
 
   const remove = useMutation({
@@ -385,6 +388,8 @@ export function MealsPage() {
       void qc.invalidateQueries({ queryKey });
       void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
     },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось удалить запись'),
   });
 
   return (
@@ -507,13 +512,10 @@ export function MealsPage() {
           onSubmit={(e) => {
             e.preventDefault();
             if (create.isPending) return;
-            setMealDescErr(null);
             const trimmed = description.trim();
             if (!trimmed) return;
             if (trimmed.length > USER_INPUT.mealDescription.max) {
-              setMealDescErr(
-                `Описание не длиннее ${USER_INPUT.mealDescription.max} символов`,
-              );
+              toast.error(`Описание не длиннее ${USER_INPUT.mealDescription.max} символов`);
               return;
             }
             create.mutate();
@@ -546,16 +548,13 @@ export function MealsPage() {
             maxLength={USER_INPUT.mealDescription.max}
             value={description}
             onChange={(e) => {
-              setMealDescErr(null);
               setDescription(e.target.value);
             }}
             onKeyDown={(e) =>
               handleEnterSubmit(e, !create.isPending && Boolean(description.trim()), () => {
                 const t = description.trim();
                 if (t.length > USER_INPUT.mealDescription.max) {
-                  setMealDescErr(
-                    `Описание не длиннее ${USER_INPUT.mealDescription.max} символов`,
-                  );
+                  toast.error(`Описание не длиннее ${USER_INPUT.mealDescription.max} символов`);
                   return;
                 }
                 if (t) create.mutate();
@@ -571,8 +570,6 @@ export function MealsPage() {
               {create.isPending ? 'Сохранение…' : 'Добавить'}
             </Button>
           </div>
-          {mealDescErr ? <p className="text-xs text-red-600">{mealDescErr}</p> : null}
-          {create.isError ? <p className="text-xs text-red-600">Не удалось сохранить</p> : null}
         </form>
       </Card>
       <Card>
@@ -634,11 +631,6 @@ export function MealsPage() {
             );
           })}
         </ul>
-        {remove.isError ? (
-          <p className="mt-3 text-sm text-red-600">
-            {remove.error instanceof Error ? remove.error.message : 'Не удалось удалить запись'}
-          </p>
-        ) : null}
         {!isLoading && (data?.meals.length ?? 0) === 0 ? (
           <p className="text-sm text-ink-muted">Записей пока нет</p>
         ) : null}

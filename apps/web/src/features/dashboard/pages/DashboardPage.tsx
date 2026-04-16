@@ -1,7 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { apiJson } from '@/shared/services/apiClient';
+import { useToast } from '@/shared/hooks/useToast';
+import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { fetchMealsAllPagesForCalendarDay } from '@/shared/lib/fetchMealsAllPages';
 import { Card } from '@/shared/components/Card';
 import { Button } from '@/shared/components/Button';
@@ -696,13 +697,11 @@ function Section({ heading, children }: { heading: string; children: ReactNode }
 
 export function DashboardPage() {
   const qc = useQueryClient();
+  const toast = useToast();
   const [weightInput, setWeightInput] = useState('');
-  const [weightInputErr, setWeightInputErr] = useState<string | null>(null);
   const [neck, setNeck] = useState('');
   const [waist, setWaist] = useState('');
   const [hips, setHips] = useState('');
-  const [measurementErr, setMeasurementErr] = useState<string | null>(null);
-  const [waterAdjustErr, setWaterAdjustErr] = useState<string | null>(null);
 
   const { data: profileData, isLoading: profileLoading } = useQuery({
     queryKey: ['profile'],
@@ -761,6 +760,8 @@ export function DashboardPage() {
       void qc.invalidateQueries({ queryKey: ['profile'] });
       setWeightInput('');
     },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить вес'),
   });
 
   const adjustWater = useMutation({
@@ -770,12 +771,10 @@ export function DashboardPage() {
         body: JSON.stringify({ date: todayISO(), addMl }),
       }),
     onSuccess: () => {
-      setWaterAdjustErr(null);
       void qc.invalidateQueries({ queryKey: ['tracking', 'water'] });
     },
-    onError: () => {
-      setWaterAdjustErr('Не удалось сохранить воду');
-    },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить воду'),
   });
 
   const addMeasurement = useMutation({
@@ -787,6 +786,8 @@ export function DashboardPage() {
       setWaist('');
       setHips('');
     },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить замер'),
   });
 
   const entries = useMemo(() => weightData?.entries ?? [], [weightData]);
@@ -1118,11 +1119,10 @@ export function DashboardPage() {
   const atWaterZero = waterTodayRaw <= 0;
 
   const applyWaterDelta = (delta: number) => {
-    setWaterAdjustErr(null);
     const abs = Math.abs(delta);
     if (delta === 0 || abs < USER_INPUT.waterAddMl.min || abs > USER_INPUT.waterAddMl.max) return;
     if (delta > 0 && waterTodayRaw >= waterDailyCap) {
-      setWaterAdjustErr('За сутки в учёте не больше 5 л.');
+      toast.error('За сутки в учёте не больше 5 л.');
       return;
     }
     if (delta < 0 && waterTodayRaw <= 0) return;
@@ -1134,23 +1134,19 @@ export function DashboardPage() {
     tdeeForCharts != null ? calorieTargetForAdherence(tdeeForCharts, profile.goal) : null;
 
   const weightSubmit = () => {
-    setWeightInputErr(null);
     const n = parseFiniteNumber(weightInput);
     if (n === null) {
-      setWeightInputErr('Введите число');
+      toast.error('Введите число');
       return;
     }
     if (!inRange(n, USER_INPUT.weightKg.min, USER_INPUT.weightKg.max)) {
-      setWeightInputErr(
-        `Допустимо от ${USER_INPUT.weightKg.min} до ${USER_INPUT.weightKg.max} кг`,
-      );
+      toast.error(`Допустимо от ${USER_INPUT.weightKg.min} до ${USER_INPUT.weightKg.max} кг`);
       return;
     }
     addWeight.mutate(n);
   };
 
   const measurementSubmit = () => {
-    setMeasurementErr(null);
     const body: Record<string, number> = {};
     const push = (
       raw: string,
@@ -1163,11 +1159,11 @@ export function DashboardPage() {
       if (!t) return true;
       const v = parseFiniteNumber(t);
       if (v === null) {
-        setMeasurementErr(`${label}: введите число`);
+        toast.error(`${label}: введите число`);
         return false;
       }
       if (!inRange(v, min, max)) {
-        setMeasurementErr(`${label}: допустимо ${min}–${max} см`);
+        toast.error(`${label}: допустимо ${min}–${max} см`);
         return false;
       }
       body[key] = v;
@@ -1446,7 +1442,6 @@ export function DashboardPage() {
               placeholder="кг"
               value={weightInput}
               onChange={(e) => {
-                setWeightInputErr(null);
                 setWeightInput(e.target.value);
               }}
               onKeyDown={(e) =>
@@ -1457,8 +1452,6 @@ export function DashboardPage() {
               {addWeight.isPending ? '…' : 'Сохранить'}
             </Button>
           </div>
-          {weightInputErr ? <p className="mt-2 text-xs text-red-600">{weightInputErr}</p> : null}
-          {addWeight.isError ? <p className="mt-2 text-xs text-red-600">Ошибка</p> : null}
         </Card>
         <Card>
           <h3 className="mb-3 text-sm font-semibold text-ink-heading">Вода за сегодня</h3>
@@ -1502,7 +1495,6 @@ export function DashboardPage() {
               −500 мл
             </Button>
           </div>
-          {waterAdjustErr ? <p className="mt-2 text-xs text-red-600">{waterAdjustErr}</p> : null}
         </Card>
         <Card>
           <h3 className="mb-3 text-sm font-semibold text-ink-heading">Новый замер</h3>
@@ -1516,7 +1508,6 @@ export function DashboardPage() {
               placeholder="Шея, см"
               value={neck}
               onChange={(e) => {
-                setMeasurementErr(null);
                 setNeck(e.target.value);
               }}
               onKeyDown={(e) =>
@@ -1532,7 +1523,6 @@ export function DashboardPage() {
               placeholder="Талия, см"
               value={waist}
               onChange={(e) => {
-                setMeasurementErr(null);
                 setWaist(e.target.value);
               }}
               onKeyDown={(e) =>
@@ -1548,7 +1538,6 @@ export function DashboardPage() {
               placeholder="Бёдра, см"
               value={hips}
               onChange={(e) => {
-                setMeasurementErr(null);
                 setHips(e.target.value);
               }}
               onKeyDown={(e) =>
@@ -1559,7 +1548,6 @@ export function DashboardPage() {
           <Button className="mt-3" onClick={measurementSubmit} disabled={addMeasurement.isPending}>
             Добавить замер
           </Button>
-          {measurementErr ? <p className="mt-2 text-xs text-red-600">{measurementErr}</p> : null}
         </Card>
       </div>
     </div>

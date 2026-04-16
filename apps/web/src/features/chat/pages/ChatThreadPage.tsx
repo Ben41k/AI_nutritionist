@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
-import { apiJson } from '@/shared/services/apiClient';
+import { useToast } from '@/shared/hooks/useToast';
+import { apiJson, ApiError } from '@/shared/services/apiClient';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { getStoredRationPlanPlainText } from '@/features/ration/lib/rationSessionStorage';
 import { Button } from '@/shared/components/Button';
@@ -27,8 +28,8 @@ export function ChatThreadPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { data: user } = useAuth();
+  const toast = useToast();
   const [text, setText] = useState('');
-  const [composerErr, setComposerErr] = useState<string | null>(null);
   const [lastMeta, setLastMeta] = useState<string | null>(null);
   const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -76,6 +77,8 @@ export function ChatThreadPage() {
       void qc.invalidateQueries({ queryKey: ['chat-threads'] });
       setEditingTitle(false);
     },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось сохранить название'),
   });
 
   const send = useMutation({
@@ -124,9 +127,10 @@ export function ChatThreadPage() {
         setOptimisticUserContent(null);
       }
     },
-    onError: (_err, _content, ctx) => {
+    onError: (err, _content, ctx) => {
       setOptimisticUserContent(null);
       if (ctx?.previousContent) setText(ctx.previousContent);
+      toast.error(err instanceof ApiError ? err.message : 'Ошибка отправки');
     },
   });
 
@@ -149,6 +153,8 @@ export function ChatThreadPage() {
       void qc.removeQueries({ queryKey: ['chat-thread', threadId] });
       navigate(chatPaths.root);
     },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : 'Не удалось удалить чат'),
   });
 
   if (!threadId) return null;
@@ -157,10 +163,9 @@ export function ChatThreadPage() {
     const c = raw.trim();
     if (!c) return;
     if (c.length > USER_INPUT.chatMessageMaxChars) {
-      setComposerErr(`Сообщение не длиннее ${USER_INPUT.chatMessageMaxChars} символов`);
+      toast.error(`Сообщение не длиннее ${USER_INPUT.chatMessageMaxChars} символов`);
       return;
     }
-    setComposerErr(null);
     send.mutate(c);
   };
 
@@ -314,7 +319,6 @@ export function ChatThreadPage() {
           value={text}
           maxLength={USER_INPUT.chatMessageMaxChars}
           onChange={(e) => {
-            setComposerErr(null);
             setText(e.target.value);
           }}
           onKeyDown={(e) =>
@@ -331,28 +335,6 @@ export function ChatThreadPage() {
         </Button>
       </div>
 
-      {composerErr ? (
-        <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">{composerErr}</p>
-      ) : null}
-      {send.isError ? (
-        <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">
-          {send.error instanceof Error ? send.error.message : 'Ошибка отправки'}
-        </p>
-      ) : null}
-      {removeThread.isError ? (
-        <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">
-          {removeThread.error instanceof Error
-            ? removeThread.error.message
-            : 'Не удалось удалить чат'}
-        </p>
-      ) : null}
-      {renameThread.isError ? (
-        <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">
-          {renameThread.error instanceof Error
-            ? renameThread.error.message
-            : 'Не удалось сохранить название'}
-        </p>
-      ) : null}
     </div>
   );
 }
