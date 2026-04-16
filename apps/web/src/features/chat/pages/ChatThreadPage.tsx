@@ -5,6 +5,7 @@ import { apiJson } from '@/shared/services/apiClient';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { getStoredRationPlanPlainText } from '@/features/ration/lib/rationSessionStorage';
 import { Button } from '@/shared/components/Button';
+import { Input } from '@/shared/components/Input';
 import { Textarea } from '@/shared/components/Textarea';
 import { TrashIcon } from '@/shared/components/TrashIcon';
 import { chatPaths } from '@/features/chat/routes';
@@ -18,6 +19,8 @@ type Msg = {
   createdAt: string;
 };
 
+type ChatThreadSummary = { id: string; title: string | null; updatedAt: string };
+
 export function ChatThreadPage() {
   const { threadId } = useParams<{ threadId: string }>();
   const navigate = useNavigate();
@@ -26,6 +29,9 @@ export function ChatThreadPage() {
   const [text, setText] = useState('');
   const [lastMeta, setLastMeta] = useState<string | null>(null);
   const [optimisticUserContent, setOptimisticUserContent] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const titleBlurSkipRef = useRef(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const { data } = useQuery({
@@ -48,6 +54,28 @@ export function ChatThreadPage() {
     },
   });
 
+  const threadQuery = useQuery({
+    queryKey: ['chat-thread', threadId],
+    enabled: Boolean(threadId),
+    queryFn: () => apiJson<{ thread: ChatThreadSummary }>(`/chat/threads/${threadId}`),
+  });
+  const threadData = threadQuery.data;
+
+  const renameThread = useMutation({
+    mutationFn: async (title: string) => {
+      if (!threadId) throw new Error('Нет идентификатора чата');
+      return apiJson<{ thread: ChatThreadSummary }>(`/chat/threads/${threadId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ title }),
+      });
+    },
+    onSuccess: (res) => {
+      qc.setQueryData(['chat-thread', threadId], { thread: res.thread });
+      void qc.invalidateQueries({ queryKey: ['chat-threads'] });
+      setEditingTitle(false);
+    },
+  });
+
   const send = useMutation({
     mutationFn: async (content: string) => {
       const rationText = user?.id ? getStoredRationPlanPlainText(user.id) : null;
@@ -55,6 +83,7 @@ export function ChatThreadPage() {
         message: { content: string };
         retrievalUsed: boolean;
         dialogMemoryUsed: boolean;
+        threadTitle?: string;
       }>(`/chat/threads/${threadId}/messages`, {
         method: 'POST',
         body: JSON.stringify({
@@ -76,6 +105,17 @@ export function ChatThreadPage() {
         ? 'Память диалога: подмешаны похожие прошлые реплики'
         : 'Память диалога: нет (мало сообщений с эмбеддингами или первые реплики)';
       setLastMeta(`${kb} · ${mem}`);
+      if (typeof res.threadTitle === 'string' && res.threadTitle.length > 0 && threadId) {
+        qc.setQueryData(['chat-thread', threadId], (prev) => {
+          const base: ChatThreadSummary = prev?.thread ?? {
+            id: threadId,
+            title: null,
+            updatedAt: new Date().toISOString(),
+          };
+          return { thread: { ...base, title: res.threadTitle } };
+        });
+        void qc.invalidateQueries({ queryKey: ['chat-threads'] });
+      }
       try {
         await qc.invalidateQueries({ queryKey: ['chat-messages', threadId] });
       } finally {
@@ -92,6 +132,10 @@ export function ChatThreadPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [data?.messages, optimisticUserContent, send.isPending]);
 
+  useEffect(() => {
+    setEditingTitle(false);
+  }, [threadId]);
+
   const removeThread = useMutation({
     mutationFn: async () => {
       if (!threadId) throw new Error('Нет идентификатора чата');
@@ -100,17 +144,88 @@ export function ChatThreadPage() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['chat-threads'] });
       void qc.removeQueries({ queryKey: ['chat-messages', threadId] });
+      void qc.removeQueries({ queryKey: ['chat-thread', threadId] });
       navigate(chatPaths.root);
     },
   });
 
   if (!threadId) return null;
 
+  const headerTitle =
+    threadQuery.isPending && !editingTitle
+      ? 'Загрузка…'
+      : threadData?.thread.title?.trim() || 'Чат';
+
+  const beginTitleEdit = () => {
+    setTitleDraft(threadData?.thread.title?.trim() || '');
+    setEditingTitle(true);
+  };
+
+  const commitTitleEdit = () => {
+    const trimmed = titleDraft.trim();
+    if (trimmed.length === 0) {
+      setEditingTitle(false);
+      return;
+    }
+    const current = threadData?.thread.title?.trim() ?? '';
+    if (trimmed === current) {
+      setEditingTitle(false);
+      return;
+    }
+    renameThread.mutate(trimmed.slice(0, 200));
+  };
+
+  const cancelTitleEdit = () => {
+    titleBlurSkipRef.current = true;
+    setEditingTitle(false);
+    setTitleDraft(threadData?.thread.title?.trim() ?? '');
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-page">
-      <div className="flex shrink-0 items-center justify-end gap-2 border-b border-border px-3 py-2 sm:px-4">
+      <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2 sm:px-4">
+        <div className="min-w-0 flex-1">
+          {editingTitle ? (
+            <Input
+              className="max-w-full rounded-lg py-2 text-sm sm:max-w-md"
+              value={titleDraft}
+              autoFocus
+              maxLength={200}
+              disabled={renameThread.isPending}
+              aria-label="Название чата"
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  commitTitleEdit();
+                }
+                if (e.key === 'Escape') {
+                  e.preventDefault();
+                  cancelTitleEdit();
+                }
+              }}
+              onBlur={() => {
+                if (titleBlurSkipRef.current) {
+                  titleBlurSkipRef.current = false;
+                  return;
+                }
+                if (!renameThread.isPending) commitTitleEdit();
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="block max-w-full truncate text-left text-sm font-semibold text-ink-heading hover:text-primary sm:text-base"
+              title="Нажмите, чтобы переименовать"
+              disabled={send.isPending || removeThread.isPending}
+              onClick={beginTitleEdit}
+            >
+              {headerTitle}
+            </button>
+          )}
+        </div>
         {lastMeta ? (
-          <p className="mr-auto hidden max-w-[min(100%,28rem)] truncate text-xs text-ink-muted sm:block">
+          <p className="hidden max-w-[min(100%,20rem)] shrink-0 truncate text-xs text-ink-muted sm:block">
             {lastMeta}
           </p>
         ) : null}
@@ -215,6 +330,13 @@ export function ChatThreadPage() {
           {removeThread.error instanceof Error
             ? removeThread.error.message
             : 'Не удалось удалить чат'}
+        </p>
+      ) : null}
+      {renameThread.isError ? (
+        <p className="shrink-0 px-3 pb-2 text-sm text-red-600 sm:px-4">
+          {renameThread.error instanceof Error
+            ? renameThread.error.message
+            : 'Не удалось сохранить название'}
         </p>
       ) : null}
     </div>

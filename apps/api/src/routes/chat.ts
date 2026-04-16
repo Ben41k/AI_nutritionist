@@ -20,6 +20,10 @@ const createThreadBody = z.object({
   title: z.string().max(200).optional(),
 });
 
+const patchThreadBody = z.object({
+  title: z.string().min(1).max(200),
+});
+
 const postMessageBody = z.object({
   content: z.string().min(1).max(8000),
   /** Текст сохранённого рациона с устройства (sessionStorage), чтобы ИИ видел составленный план. */
@@ -56,6 +60,7 @@ function buildSystemPrompt(params: {
   return [
     'You are an AI nutrition assistant (not a medical professional).',
     'Speak in Russian.',
+    'Use only normal Cyrillic and Latin (for abbreviations, units, or established loanwords when natural), digits 0-9, and standard punctuation and Markdown symbols. Do not output CJK (Chinese/Japanese/Korean) characters, Hebrew or Arabic script, rare ornamental Unicode, or other hieroglyph-like clutter in your own explanations (verbatim quotes of what the user already wrote are fine). If retrieved excerpts contain non-Cyrillic script, paraphrase into Russian instead of copying those characters.',
     'Format replies in Markdown (CommonMark + GitHub-style pipe tables when comparing numbers or meal options). The client renders Markdown, so use it for clarity: short paragraphs separated by a blank line, bullet or numbered lists for plans and options, **bold** for key takeaways and warnings, `inline code` sparingly for numbers or labels when it helps scanning.',
     'For longer answers, add ### section headings. Prefer compact pipe tables over code blocks for small numeric grids; use fenced code blocks (triple backticks) for long structured snippets. Avoid decorative ASCII art.',
     'Do not diagnose diseases or prescribe medications.',
@@ -83,6 +88,50 @@ function buildSystemPrompt(params: {
     'Saved ration from app (rolling plan text from the user device when they sent this message):',
     params.rationFromClient,
   ].join('\n');
+}
+
+function isPlaceholderThreadTitle(title: string | null | undefined): boolean {
+  if (title == null) return true;
+  const t = title.trim();
+  if (t.length === 0) return true;
+  return t.toLowerCase() === 'новый чат';
+}
+
+function sanitizeGeneratedThreadTitle(raw: string): string {
+  let t = raw.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+  t = t.replace(/^["«'"`]+|["»'"`]+$/g, '').trim();
+  if (t.length === 0) return '';
+  const max = 80;
+  if (t.length > max) t = `${t.slice(0, max - 1)}…`;
+  return t;
+}
+
+async function generateThreadTitleFromFirstTurn(params: {
+  userContent: string;
+  assistantContent: string;
+}): Promise<string | null> {
+  const u = params.userContent.slice(0, 1200);
+  const a = params.assistantContent.slice(0, 800);
+  try {
+    const raw = await createChatCompletion({
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Ты придумываешь короткое название чата для списка диалогов. Ответь одной строкой: 2–7 слов на русском, без кавычек, без эмодзи, без префикса «Чат:» или «Тема:». Суть — по первому вопросу пользователя и по началу ответа ассистента.',
+        },
+        {
+          role: 'user',
+          content: `Вопрос пользователя:\n${u}\n\nНачало ответа ассистента:\n${a}`,
+        },
+      ],
+      temperature: 0.25,
+    });
+    const cleaned = sanitizeGeneratedThreadTitle(raw);
+    return cleaned.length > 0 ? cleaned : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
@@ -171,6 +220,53 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
     await reply.send({ messages: page, hasMore, nextCursor });
   });
 
+  app.get('/chat/threads/:threadId', async (req, reply) => {
+    const u = getBearerUser(req);
+    if (!u) {
+      sendError(reply, 401, 'UNAUTHORIZED', 'Authentication required');
+      return;
+    }
+    const { threadId } = req.params as { threadId: string };
+    const thread = await prisma.chatThread.findFirst({
+      where: { id: threadId, userId: u.sub },
+      select: { id: true, title: true, updatedAt: true },
+    });
+    if (!thread) {
+      sendError(reply, 404, 'NOT_FOUND', 'Thread not found');
+      return;
+    }
+    await reply.send({ thread });
+  });
+
+  app.patch('/chat/threads/:threadId', async (req, reply) => {
+    const u = getBearerUser(req);
+    if (!u) {
+      sendError(reply, 401, 'UNAUTHORIZED', 'Authentication required');
+      return;
+    }
+    const { threadId } = req.params as { threadId: string };
+    const parsed = patchThreadBody.safeParse(req.body);
+    if (!parsed.success) {
+      sendError(reply, 400, 'VALIDATION_ERROR', 'Invalid body', parsed.error.flatten());
+      return;
+    }
+    const title = parsed.data.title.trim();
+    if (title.length === 0) {
+      sendError(reply, 400, 'VALIDATION_ERROR', 'Title is empty');
+      return;
+    }
+    try {
+      const thread = await prisma.chatThread.update({
+        where: { id: threadId, userId: u.sub },
+        data: { title },
+        select: { id: true, title: true, updatedAt: true },
+      });
+      await reply.send({ thread });
+    } catch {
+      sendError(reply, 404, 'NOT_FOUND', 'Thread not found');
+    }
+  });
+
   app.post(
     '/chat/threads/:threadId/messages',
     {
@@ -203,6 +299,10 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       sendError(reply, 404, 'NOT_FOUND', 'Thread not found');
       return;
     }
+
+    const priorMessageCount = await prisma.chatMessage.count({ where: { threadId } });
+    const shouldAutoTitle =
+      priorMessageCount === 0 && isPlaceholderThreadTitle(thread.title);
 
     const content = parsed.data.content;
     const clientRationSafe = clampClientRationText(parsed.data.clientRationPlanText);
@@ -292,15 +392,29 @@ export async function registerChatRoutes(app: FastifyInstance): Promise<void> {
       /* assistant reply stays without embedding */
     }
 
+    let threadTitle: string | undefined;
+    const threadUpdate: { updatedAt: Date; title?: string } = { updatedAt: new Date() };
+    if (shouldAutoTitle) {
+      const generated = await generateThreadTitleFromFirstTurn({
+        userContent: content,
+        assistantContent: assistantText,
+      });
+      if (generated) {
+        threadUpdate.title = generated;
+        threadTitle = generated;
+      }
+    }
+
     await prisma.chatThread.update({
       where: { id: threadId },
-      data: { updatedAt: new Date() },
+      data: threadUpdate,
     });
 
     await reply.send({
       message: { role: 'ASSISTANT', content: assistantText },
       retrievalUsed: knowledgeContext.length > 0,
       dialogMemoryUsed: dialogMemoryContext.length > 0,
+      ...(threadTitle ? { threadTitle } : {}),
     });
   });
 
