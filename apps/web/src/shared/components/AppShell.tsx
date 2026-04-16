@@ -2,17 +2,9 @@ import clsx from 'clsx';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import type { ReactNode } from 'react';
+import { PRIMARY_NAV_ITEMS, type PrimaryNavIcon } from '@/shared/constants/primaryNav';
 
-const nav = [
-  { to: '/', label: 'Метрики', icon: 'chart' },
-  { to: '/meals', label: 'Дневник', icon: 'meal' },
-  { to: '/ration', label: 'Рацион', icon: 'ration' },
-  { to: '/chat', label: 'Чат', icon: 'chat' },
-] as const;
-
-type NavIcon = (typeof nav)[number]['icon'];
-
-function Icon({ name }: { name: NavIcon }) {
+function Icon({ name }: { name: PrimaryNavIcon }) {
   const common = 'h-5 w-5';
   if (name === 'chart')
     return (
@@ -151,11 +143,12 @@ export function AppShell({
           </span>
         </div>
         <nav className="flex min-h-0 flex-1 flex-col items-stretch gap-2">
-          {nav.map((item) => (
+          {PRIMARY_NAV_ITEMS.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
               end={item.to === '/'}
+              title={item.navLabel}
               className={({ isActive }) => {
                 const chatActive = item.to === '/chat' && location.pathname.startsWith('/chat');
                 const active = isActive || chatActive;
@@ -168,7 +161,6 @@ export function AppShell({
                   active && 'bg-primary text-white hover:bg-primary hover:text-white',
                 );
               }}
-              title={item.label}
             >
               <span className="flex shrink-0 items-center justify-center [&>svg]:shrink-0">
                 <Icon name={item.icon} />
@@ -180,7 +172,7 @@ export function AppShell({
                   sidebarExpanded ? 'max-w-[9rem] opacity-100' : 'max-w-0 opacity-0',
                 )}
               >
-                {item.label}
+                {item.navLabel}
               </span>
             </NavLink>
           ))}
@@ -239,13 +231,11 @@ export function AppShell({
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex flex-wrap items-start justify-between gap-4 border-b border-border bg-page px-8 py-6">
-          <div>
-            {subtitle ? (
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-                {subtitle}
-              </p>
-            ) : null}
+          <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-bold text-ink-heading">{title}</h1>
+            {subtitle ? (
+              <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-ink-muted">{subtitle}</p>
+            ) : null}
           </div>
           {actions}
         </header>

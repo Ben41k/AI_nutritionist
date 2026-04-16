@@ -3,6 +3,7 @@ import { ProtectedLayout } from './ProtectedLayout';
 import { AdminGuard } from './AdminGuard';
 import { LoginPage } from '@/features/auth/pages/LoginPage';
 import { RegisterPage } from '@/features/auth/pages/RegisterPage';
+import { PRIMARY_NAV } from '@/shared/constants/primaryNav';
 
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
@@ -17,7 +18,7 @@ export const router = createBrowserRouter([
           const { DashboardPage } = await import('@/features/dashboard/pages/DashboardPage');
           return { Component: DashboardPage };
         },
-        handle: { title: 'Метрики', subtitle: 'Калькулятор и аналитика' },
+        handle: { title: PRIMARY_NAV.metrics.pageTitle, subtitle: PRIMARY_NAV.metrics.description },
       },
       {
         path: 'profile',
@@ -33,7 +34,7 @@ export const router = createBrowserRouter([
           const { MealsPage } = await import('@/features/meals/pages/MealsPage');
           return { Component: MealsPage };
         },
-        handle: { title: 'Дневник питания', subtitle: 'Приёмы пищи' },
+        handle: { title: PRIMARY_NAV.meals.pageTitle, subtitle: PRIMARY_NAV.meals.description },
       },
       {
         path: 'ration',
@@ -41,7 +42,7 @@ export const router = createBrowserRouter([
           const { RationPage } = await import('@/features/ration/pages/RationPage');
           return { Component: RationPage };
         },
-        handle: { title: 'Рацион', subtitle: 'Примерный план на месяц' },
+        handle: { title: PRIMARY_NAV.ration.pageTitle, subtitle: PRIMARY_NAV.ration.description },
       },
       {
         path: 'chat',
@@ -49,7 +50,7 @@ export const router = createBrowserRouter([
           const { ChatListPage } = await import('@/features/chat/pages/ChatListPage');
           return { Component: ChatListPage };
         },
-        handle: { title: 'Чат с AI', subtitle: 'Диетолог-ассистент' },
+        handle: { title: PRIMARY_NAV.chat.pageTitle, subtitle: PRIMARY_NAV.chat.description },
       },
       {
         path: 'chat/:threadId',
@@ -57,7 +58,10 @@ export const router = createBrowserRouter([
           const { ChatThreadPage } = await import('@/features/chat/pages/ChatThreadPage');
           return { Component: ChatThreadPage };
         },
-        handle: { title: 'Диалог', subtitle: 'Чат с AI' },
+        handle: {
+          title: 'Диалог',
+          subtitle: 'Сообщения в этом чате с AI-ассистентом по питанию.',
+        },
       },
       {
         path: 'admin/knowledge',
